@@ -46,7 +46,7 @@ export async function spawnRole(input: {
     const deadline = Date.now() + Number(process.env.BLANCHE_REGISTRATION_TIMEOUT_MS ?? 20_000);
     while (Date.now() < deadline) {
       const sessions = await input.liveSessions();
-      if (sessions.some((session) => typeof session === "string" ? session === sessionName : session.name === sessionName)) return { sessionName, paneId: id };
+      if (sessions.includes(sessionName)) return { sessionName, paneId: id };
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(`Timed out waiting for ${sessionName} to register in pane ${id}.`);
