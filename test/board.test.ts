@@ -8,7 +8,7 @@ import { join } from "node:path";
 // isolated HOME is all the sandboxing these tests need.
 process.env.HOME = mkdtempSync(join(tmpdir(), "blanche-home-"));
 
-const { taskDir, createTask, readBoard, writeBoard, commitBoard, listTasks, writeCheckpoint } =
+const { taskDir, createTask, readBoard, writeBoard, updateBoard, listTasks, writeCheckpoint } =
   await import("../board.ts");
 
 const crew = {
@@ -66,28 +66,11 @@ test("writeCheckpoint lands in checkpoints/ and omits empty sections", () => {
   assert.doesNotMatch(body, /## Remaining/, "empty sections are omitted, not rendered blank");
 });
 
-test("commitBoard succeeds on the current revision", () => {
-  const b = newTask("t-commit");
-  const next = readBoard("t-commit");
-  next.phase = "VERIFY";
-  const res = commitBoard(next, b.revision);
-  assert.equal(res.ok, true);
-  assert.equal(readBoard("t-commit").phase, "VERIFY");
-});
-
-test("commitBoard rejects a stale revision, returns current, and leaves disk untouched", () => {
-  newTask("t-stale");
-  const a = readBoard("t-stale");
-  const b = readBoard("t-stale");
-
-  a.phase = "QA";
-  assert.equal(commitBoard(a, a.revision).ok, true);
-
-  b.phase = "CLOBBERED";
-  const res = commitBoard(b, 0);
-  assert.equal(res.ok, false);
-  if (!res.ok) assert.equal(res.current.phase, "QA", "loser is handed the current board");
-  assert.equal(readBoard("t-stale").phase, "QA", "disk is untouched by the loser");
+test("updateBoard reads fresh state, applies a mutation, and bumps revision once", () => {
+  const b = newTask("t-update");
+  const updated = updateBoard("t-update", (fresh) => { fresh.phase = "VERIFY"; });
+  assert.equal(updated.revision, b.revision + 1);
+  assert.equal(readBoard("t-update").phase, "VERIFY");
 });
 
 test("after writeBoard no .tmp remains and the board parses", () => {

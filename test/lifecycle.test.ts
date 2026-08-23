@@ -196,7 +196,7 @@ test("consult persists a record and leaves phase, owner, and currentSpec unchang
   assert.equal(record.reworkRound, 2);
   assert.equal(after.specs.s02.lastAdvisorConsultedRound, 2);
   assert.equal(record.summaryPath, result.content[0].text);
-  assert.match(record.summaryPath, /^consultations\/c-/);
+  assert.match(record.summaryPath, new RegExp(`^consultations/c-${record.id}\\.md$`));
   assert.equal(readFileSync(join(taskDir(id), record.summaryPath), "utf8"), "use the persisted fixture");
 });
 
@@ -208,6 +208,9 @@ test("consult rejects an empty answer without changing the advisor round", async
   await assert.rejects(() => h.tools.consult.execute("call", {
     role: "advisor", requestedBy: "worker", answer: "   ", question: "still waiting",
   }), /answer must not be empty/);
+  await assert.rejects(() => h.tools.consult.execute("call", {
+    role: "leader", requestedBy: "worker", answer: "advice", question: "invalid role",
+  }), /Consult role must be researcher or advisor/);
   const after = readBoard(id);
   assert.equal(after.revision, before.revision);
   assert.equal(after.consultations.length, 0);
