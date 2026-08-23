@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readdirSync, readFileSync, utimesSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -101,4 +101,40 @@ test("after writeBoard no .tmp remains and the board parses", () => {
 test("listTasks returns saved boards", () => {
   newTask("t-list");
   assert.equal(listTasks().some((b) => b.id === "t-list"), true);
+});
+
+test("listTasks orders by recency, not by task id", () => {
+  // ids chosen so lexicographic order is the opposite of the correct answer
+  newTask("z-old");
+  newTask("a-new");
+  // set mtimes explicitly so the assertion cannot flake on fast filesystems
+  const stamp = (id: string, secs: number) =>
+    utimesSync(join(taskDir(id), "board.json"), secs, secs);
+  stamp("z-old", 1_000_000);
+  stamp("a-new", 2_000_000);
+
+  const ids = listTasks().map((b) => b.id).filter((id) => id === "z-old" || id === "a-new");
+  assert.deepEqual(ids, ["a-new", "z-old"], "most recently updated first");
+
+  // and it must track updates, not creation: touching the old one reverses it
+  stamp("z-old", 3_000_000);
+  const after = listTasks().map((b) => b.id).filter((id) => id === "z-old" || id === "a-new");
+  assert.deepEqual(after, ["z-old", "a-new"], "recency follows the latest write");
+});
+
+test("listTasks cwd filter normalises trailing slashes, dot segments and symlinks", () => {
+  const real = mkdtempSync(join(tmpdir(), "blanche-cwd-"));
+  mkdirSync(join(real, "sub"), { recursive: true });
+  const target = join(real, "sub");
+
+  createTask({ id: "t-here", workflow: "feat", prefix: "mb", title: "here", description: "", resolved: crew, cwd: target });
+  createTask({ id: "t-elsewhere", workflow: "feat", prefix: "mb", title: "elsewhere", description: "", resolved: crew, cwd: join(real, "other") });
+
+  const idsFor = (c: string) => listTasks(c).map((b) => b.id);
+
+  assert.deepEqual(idsFor(target), ["t-here"], "exact path matches");
+  assert.deepEqual(idsFor(target + "/"), ["t-here"], "trailing slash still matches");
+  assert.deepEqual(idsFor(join(real, "sub", ".")), ["t-here"], "dot segment still matches");
+  // on macOS tmpdir() is a symlink (/tmp -> /private/tmp), so this is the real case
+  assert.deepEqual(idsFor(join(real, "other", "..", "sub")), ["t-here"], "dotdot segment still matches");
 });

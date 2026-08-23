@@ -74,13 +74,26 @@ export function taskDir(id: string): string       // ~/.pi/agent/pi-blanche/task
 export function createTask(input: {...}): Board   // makes dirs, task.md, board.json
 export function readBoard(id: string): Board
 export function writeBoard(board: Board): void    // revision++, atomic write
-export function listTasks(cwd?: string): Board[]  // newest first, optional cwd filter
+export function listTasks(cwd?: string): Board[]  // most recently updated first, optional cwd filter
 export function writeCheckpoint(board, role, spec, epoch, input: CheckpointInput): string
 export function writeConsultation(board, rec, body): string
 ```
 
 - Atomic write means write to `board.json.tmp` then rename. A half-written board
   is the one file that must never exist.
+- **Recency comes from the filesystem, not from the board.** Order `listTasks` by
+  the `mtime` of each `board.json`, descending. Do not add a `createdAt` field:
+  the mtime already exists, needs no maintenance, and cannot drift from reality.
+  Sorting by task id is wrong — ids are arbitrary, so `z-old` sorts ahead of
+  `a-new` (found by QA).
+  This deliberately means *most recently updated* rather than *created*, which is
+  what the only caller wants: `/crew resume` defaults to the task you were last
+  working on, not the one you started first.
+- The `cwd` filter must normalise both sides — `resolve()` then `realpathSync()`
+  with a fallback to the resolved path. An exact string compare misses genuine
+  matches that differ by a trailing slash, a `.`/`..` segment, or a symlink
+  (macOS `/tmp` vs `/private/tmp` is the one that bites in tests). Same
+  normalisation pi-intercom does in `cwd.ts`.
 - `writeBoard` bumps `revision`. Callers that hold a stale revision must lose:
   export `commitBoard(next: Board, expectedRevision: number)` returning
   `{ ok: true } | { ok: false; current: Board }`.
