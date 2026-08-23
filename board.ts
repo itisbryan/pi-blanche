@@ -1,26 +1,146 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, statSync, realpathSync, rmdirSync, rmSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Board, CheckpointInput, ConsultationRecord, Role } from "./types.js";
-export const taskRoot=(cwd=join(homedir(),".pi/agent/pi-blanche/tasks"))=>cwd;
-export function taskDir(id:string){return join(taskRoot(),id)}
-const atomic=(path:string,data:string)=>{const tmp=path+".tmp";writeFileSync(tmp,data);renameSync(tmp,path)};
-export function createTask(input: any): Board { const id=input.id; const dir=taskDir(id); mkdirSync(join(dir,"specs"),{recursive:true}); mkdirSync(join(dir,"checkpoints"),{recursive:true}); mkdirSync(join(dir,"consultations"),{recursive:true}); writeFileSync(join(dir,"task.md"),input.description??"");
- const board:Board={id,workflow:input.workflow,prefix:input.prefix??input.resolved?.prefix??"",cwd:input.cwd??process.cwd(),status:"active",phase:input.phase??"REQUESTED",owner:input.owner??"leader",revision:0,task:{title:input.title??id,descriptionPath:"task.md"},specs:input.specs??{},consultations:[],leader:input.leader??{sessionName:"leader"},resolved:input.resolved,sessions:{},reworkRound:0,lastAdvisorConsultedRound:null,history:[]}; atomic(join(dir,"board.json"),JSON.stringify(board,null,2)); return board; }
-export function readBoard(id:string){return JSON.parse(readFileSync(join(taskDir(id),"board.json"),"utf8")) as Board}
-export function writeBoard(board:Board){board.revision++;atomic(join(taskDir(board.id),"board.json"),JSON.stringify(board,null,2))}
-export function updateBoard(id:string,mutate:(b:Board)=>void):Board {
- const lock=join(taskDir(id),"board.json.lock"); const sleep=()=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5);
- for(let i=0;i<20;i++){
-  try {
-   // ponytail: stale-break races — two processes recovering from one crashed holder can both rmSync then both mkdir. Upgrade path: O_EXCL lock file holding the owner pid, verified before breaking.
-   if(existsSync(lock)&&Date.now()-statSync(lock).mtimeMs>5000) rmSync(lock,{recursive:true,force:true}); mkdirSync(lock);
-  } catch { sleep(); continue; }
-  try { const b=readBoard(id); mutate(b); writeBoard(b); return b; } finally { rmSync(lock,{recursive:true,force:true}); }
- }
- throw Error("Board is busy; retry");
+export const taskRoot = (cwd = join(homedir(), ".pi/agent/pi-blanche/tasks")) => cwd;
+export function taskDir(id: string) {
+	return join(taskRoot(), id);
+}
+const atomic = (path: string, data: string) => {
+	const tmp = `${path}.tmp`;
+	writeFileSync(tmp, data);
+	renameSync(tmp, path);
+};
+export function createTask(input: any): Board {
+	const id = input.id;
+	const dir = taskDir(id);
+	mkdirSync(join(dir, "specs"), { recursive: true });
+	mkdirSync(join(dir, "checkpoints"), { recursive: true });
+	mkdirSync(join(dir, "consultations"), { recursive: true });
+	writeFileSync(join(dir, "task.md"), input.description ?? "");
+	const board: Board = {
+		id,
+		workflow: input.workflow,
+		prefix: input.prefix ?? input.resolved?.prefix ?? "",
+		cwd: input.cwd ?? process.cwd(),
+		status: "active",
+		phase: input.phase ?? "REQUESTED",
+		owner: input.owner ?? "leader",
+		revision: 0,
+		task: { title: input.title ?? id, descriptionPath: "task.md" },
+		specs: input.specs ?? {},
+		consultations: [],
+		leader: input.leader ?? { sessionName: "leader" },
+		resolved: input.resolved,
+		sessions: {},
+		reworkRound: 0,
+		lastAdvisorConsultedRound: null,
+		history: [],
+	};
+	atomic(join(dir, "board.json"), JSON.stringify(board, null, 2));
+	return board;
+}
+export function readBoard(id: string) {
+	return JSON.parse(readFileSync(join(taskDir(id), "board.json"), "utf8")) as Board;
+}
+export function writeBoard(board: Board) {
+	board.revision++;
+	atomic(join(taskDir(board.id), "board.json"), JSON.stringify(board, null, 2));
+}
+export function updateBoard(id: string, mutate: (b: Board) => void): Board {
+	const lock = join(taskDir(id), "board.json.lock");
+	const sleep = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+	for (let i = 0; i < 20; i++) {
+		try {
+			// ponytail: stale-break races — two processes recovering from one crashed holder can both rmSync then both mkdir. Upgrade path: O_EXCL lock file holding the owner pid, verified before breaking.
+			if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs > 5000)
+				rmSync(lock, { recursive: true, force: true });
+			mkdirSync(lock);
+		} catch {
+			sleep();
+			continue;
+		}
+		try {
+			const b = readBoard(id);
+			mutate(b);
+			writeBoard(b);
+			return b;
+		} finally {
+			rmSync(lock, { recursive: true, force: true });
+		}
+	}
+	throw Error("Board is busy; retry");
 }
 
-export function listTasks(cwd?:string){if(!existsSync(taskRoot()))return [];const norm=(p:string)=>{const r=resolve(p);try{return realpathSync(r)}catch{return r}};const wanted=cwd&&norm(cwd);return readdirSync(taskRoot(),{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>{try{const b=readBoard(e.name);return {b,mtime:statSync(join(taskDir(e.name),"board.json")).mtimeMs}}catch{return null}}).filter((x):x is {b:Board,mtime:number}=>!!x&&(!wanted||norm(x.b.cwd)===wanted)).sort((a,b)=>b.mtime-a.mtime).map(x=>x.b)}
-export function writeCheckpoint(board:Board,role:Role,spec:string|undefined,epoch:number,input:CheckpointInput){const name=`${spec??"task"}-${role}-e${epoch}.md`,path=join(taskDir(board.id),"checkpoints",name);const sections:[string, string|undefined][]=[['Completed',input.completed?.join("\n")],['Decisions',input.decisions?.join("\n")],['Failed approaches',input.failedApproaches?.map(x=>`${x.approach}: ${x.result} (${x.whyItFailed})`).join("\n")],['Current failures',input.currentFailures?.join("\n")],['Validation',input.validation?.join("\n")],['Files changed',input.filesChanged?.join("\n")],['Remaining',input.remaining?.join("\n")],['Next action',input.nextAction]];writeFileSync(path,sections.filter(([,v])=>v).map(([k,v])=>`## ${k}\n${v}`).join("\n\n")+"\n");return path}
-export function writeConsultation(board:Board,rec:ConsultationRecord,body:string){const path=join(taskDir(board.id),rec.summaryPath);mkdirSync(join(path,".."),{recursive:true});writeFileSync(path,body);return rec.summaryPath}
+export function listTasks(cwd?: string) {
+	if (!existsSync(taskRoot())) return [];
+	const norm = (p: string) => {
+		const r = resolve(p);
+		try {
+			return realpathSync(r);
+		} catch {
+			return r;
+		}
+	};
+	const wanted = cwd && norm(cwd);
+	return readdirSync(taskRoot(), { withFileTypes: true })
+		.filter((e) => e.isDirectory())
+		.map((e) => {
+			try {
+				const b = readBoard(e.name);
+				return { b, mtime: statSync(join(taskDir(e.name), "board.json")).mtimeMs };
+			} catch {
+				return null;
+			}
+		})
+		.filter((x): x is { b: Board; mtime: number } => !!x && (!wanted || norm(x.b.cwd) === wanted))
+		.sort((a, b) => b.mtime - a.mtime)
+		.map((x) => x.b);
+}
+export function writeCheckpoint(
+	board: Board,
+	role: Role,
+	spec: string | undefined,
+	epoch: number,
+	input: CheckpointInput,
+) {
+	const name = `${spec ?? "task"}-${role}-e${epoch}.md`,
+		path = join(taskDir(board.id), "checkpoints", name);
+	const sections: [string, string | undefined][] = [
+		["Completed", input.completed?.join("\n")],
+		["Decisions", input.decisions?.join("\n")],
+		[
+			"Failed approaches",
+			input.failedApproaches?.map((x) => `${x.approach}: ${x.result} (${x.whyItFailed})`).join("\n"),
+		],
+		["Current failures", input.currentFailures?.join("\n")],
+		["Validation", input.validation?.join("\n")],
+		["Files changed", input.filesChanged?.join("\n")],
+		["Remaining", input.remaining?.join("\n")],
+		["Next action", input.nextAction],
+	];
+	writeFileSync(
+		path,
+		`${sections
+			.filter(([, v]) => v)
+			.map(([k, v]) => `## ${k}\n${v}`)
+			.join("\n\n")}\n`,
+	);
+	return path;
+}
+export function writeConsultation(board: Board, rec: ConsultationRecord, body: string) {
+	const path = join(taskDir(board.id), rec.summaryPath);
+	mkdirSync(join(path, ".."), { recursive: true });
+	writeFileSync(path, body);
+	return rec.summaryPath;
+}

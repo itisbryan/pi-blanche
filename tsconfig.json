@@ -1,18 +1,18 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "skipLibCheck": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "types": ["node"],
-    "paths": {
-      "@earendil-works/*": ["/Users/itisbryan/.pi/agent/npm/node_modules/@earendil-works/*"],
-      "typebox": ["/Users/itisbryan/.pi/agent/npm/node_modules/typebox"]
-    }
-  },
-  "include": ["*.ts", "test/**/*.ts"]
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"types": ["node"],
+		"paths": {
+			"@earendil-works/*": ["/Users/itisbryan/.pi/agent/npm/node_modules/@earendil-works/*"],
+			"typebox": ["/Users/itisbryan/.pi/agent/npm/node_modules/typebox"]
+		}
+	},
+	"include": ["*.ts", "test/**/*.ts"]
 }
