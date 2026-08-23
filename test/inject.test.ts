@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildCrewBlock } from "../inject.ts";
+import type { Board } from "../types.ts";
+
+const board = (): Board => ({
+  id: "t-1", workflow: "feat", prefix: "mb", cwd: "/tmp", status: "active", phase: "IMPLEMENTING", owner: "worker", revision: 1,
+  task: { title: "Add '$' support", descriptionPath: "task.md" },
+  plan: { revision: 1, status: "approved", contentPath: "plan.md" }, currentSpec: "s02", specs: {
+    s02: { status: "implementing", path: "/definitely/missing", dependsOn: [], reworkRound: 1, lastAdvisorConsultedRound: null },
+  }, consultations: [], leader: { sessionName: "mb-t-1-leader" }, resolved: {
+    workflow: "feat", prefix: "mb", roster: ["planner", "researcher", "advisor", "worker", "qa", "verifier"], agents: {}, phases: [{ name: "IMPLEMENTING", owner: "worker" }], specs: true, advisorAfter: 2, maxRework: 3, maxWorkers: 1, configRevision: "x",
+  }, sessions: { worker: { sessionName: "mb-t-1-worker", contextEpoch: 1 } }, reworkRound: 0, lastAdvisorConsultedRound: null, history: [],
+});
+
+const input = (contextPct?: number) => ({ role: "worker" as const, board: board(), checkpoint: "validated files", softLimit: 0.8, contextPct, peers: ["mb-t-1-qa", "mb-t-1-planner"], rolePrompt: "ROLE PROMPT" });
+
+test("renders worker block with spec, checkpoint, and peers", () => {
+  const block = buildCrewBlock(input(0.5));
+  assert.match(block, /ROLE PROMPT/);
+  assert.match(block, /validated files/);
+  assert.match(block, /mb-t-1-qa/);
+  assert.match(block, /s02/);
+});
+
+test("context pressure is absent below limit and present once at limit", () => {
+  assert.equal(buildCrewBlock(input(0.79)).match(/CONTEXT_PRESSURE/g), null);
+  assert.equal(buildCrewBlock(input(0.8)).match(/CONTEXT_PRESSURE/g)?.length, 1);
+});
+
+test("assembly is stable and omits missing checkpoint", () => {
+  const a = buildCrewBlock({ ...input(0), checkpoint: undefined });
+  assert.equal(a, buildCrewBlock({ ...input(0), checkpoint: undefined }));
+  assert.doesNotMatch(a, /Latest checkpoint/);
+});
