@@ -2,11 +2,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+stub_dir=$(mktemp -d "${TMPDIR:-/tmp}/blanche-smoke.XXXXXX")
+stub_bin="$PWD/test/fake-herdr.sh"
+stub_log="$stub_dir/calls"
+: > "$stub_log"
+
 # Load the extension and verify its command path does not crash.
 pi --no-extensions -e ./index.ts --no-session -p '/crew status' >/dev/null
 
 id="smoke-$$"
-trap 'rm -rf "$HOME/.pi/agent/pi-blanche/tasks/$id" "$HOME/.pi/agent/pi-blanche/smoke-session"' EXIT
+trap 'rm -rf "$HOME/.pi/agent/pi-blanche/tasks/$id" "$HOME/.pi/agent/pi-blanche/smoke-session" "$stub_dir"' EXIT
 mkdir -p "$HOME/.pi/agent/pi-blanche/tasks/$id/specs" "$HOME/.pi/agent/pi-blanche/tasks/$id/checkpoints" "$HOME/.pi/agent/pi-blanche/tasks/$id/consultations"
 printf 'CHECKPOINT_SENTINEL\n' > "$HOME/.pi/agent/pi-blanche/tasks/$id/checkpoints/s01-worker-e0.md"
 printf 'OLD_CONSULTATION_SENTINEL\n' > "$HOME/.pi/agent/pi-blanche/tasks/$id/consultations/c-old.md"
@@ -29,3 +34,19 @@ if grep -R -q 'BLANCHE_MARKER' "$HOME/.pi/agent/pi-blanche/smoke-session" --incl
   echo 'injected prompt entered persisted history' >&2
   exit 1
 fi
+
+# Exercise spawnRole against the reproducible stub Herdr: unwrap the real
+# pane-id envelope, poll the supplied roster, and close the same pane on timeout.
+HERDR_BIN="$stub_bin" HERDR_STUB_LOG="$stub_log" BLANCHE_REGISTRATION_TIMEOUT_MS=200 \
+  npx tsx -e 'import {spawnRole} from "./spawn.ts"; (async()=>{try{await spawnRole({role:"worker",board:{id:"stub task $'"'"'quoted'"'"'",prefix:"mb"} as any,profile:{model:"model $1",thinking:"low"},cwd:"/tmp/cwd with '"'"'quote'"'"'",liveSessions:async()=>[]}); process.exitCode=1;}catch(error){console.log((error as Error).message);}})()' > "$stub_dir/result"
+grep -Fq 'Timed out waiting for mb-stub task' "$stub_dir/result" || { echo 'spawn timeout was not reported' >&2; cat "$stub_dir/result" >&2; exit 1; }
+grep -Fq 'pane run stub:pane:42 ' "$stub_log" || { echo 'pane run did not receive result.pane.pane_id' >&2; cat "$stub_log" >&2; exit 1; }
+grep -Fq 'pane close stub:pane:42' "$stub_log" || { echo 'timeout did not close the opened pane' >&2; cat "$stub_log" >&2; exit 1; }
+if grep -q 'cli:pane:' "$stub_log"; then
+  echo 'envelope id leaked into pane argv instead of result.pane.pane_id' >&2
+  cat "$stub_log" >&2
+  exit 1
+fi
+grep -Fq "pane split --current --direction right --cwd /tmp/cwd with 'quote'" "$stub_log" || { echo 'pane split argv lost cwd' >&2; exit 1; }
+grep -Fq "pi --name 'mb-stub task" "$stub_log" || { echo 'session name was not passed as expected' >&2; exit 1; }
+grep -Fq -- "--model 'model \$1' --thinking 'low'" "$stub_log" || { echo 'model/thinking argv was not quoted as expected' >&2; exit 1; }
