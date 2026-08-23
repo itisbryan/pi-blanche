@@ -72,17 +72,26 @@ out with a message naming the pane, and close the pane on failure.
 
 ```ts
 export function buildCrewBlock(input: {
-  role: Role; board: Board; checkpoint?: string; consultation?: string;
-  contextPct?: number; softLimit: number; peers: string[]; rolePrompt: string;
+  role: Role; board: Board; rolePrompt: string;
+  specBody?: string; checkpoint?: string; consultation?: string;
+  contextPct?: number; softLimit: number; peers: string[];
 }): string
 ```
 
-Pure string assembly, fully unit-testable. Contains: role prompt, phase list
-with the current phase marked and each owner, board summary (task, phase, owner,
-spec, rework), the current spec body when `specs` is on, the latest checkpoint,
-the latest advisor consultation for the current spec, peer session names, and —
+Pure string assembly, fully unit-testable. Every piece of file content arrives
+as an argument — `rolePrompt`, `specBody`, `checkpoint`, `consultation` are read
+by the caller in `index.ts`, never by this function. (Rev fix: the earlier
+signature demanded the spec body but had no field for it, which would have
+forced a file read and broken purity.)
+
+Contains: role prompt, phase list with the current phase marked and each owner,
+board summary (task, phase, owner, spec, rework), `specBody` when present, the
+latest checkpoint, the latest advisor consultation, peer session names, and —
 only when `contextPct >= softLimit` — the line
 `CONTEXT_PRESSURE — finish this step, then call checkpoint().`
+
+Ordering is fixed and deterministic: peers sorted, sections always in the same
+order. A stable block is what keeps the provider prompt cache warm.
 
 ### index.ts
 
@@ -124,6 +133,31 @@ failure stop guessing, checkpoint, and consult the advisor.
 - Every interpolated value in the herdr command is shell-quoted.
 - `buildCrewBlock` is pure and covered by unit tests.
 
+## How this spec is proved
+
+Unit tests cover `inject.ts` only — it is the pure part. The rest is proved by
+**running a real pi**, not by mocking one. Building a fake `pi` object, fake
+extension channel and fake `ctx` to assert that `registerCommand` was called is
+scaffolding that tests the mock, not the extension.
+
+Smoke procedure (this is the deliverable, as a script `test/smoke.sh`):
+
+```bash
+# 1. extension loads, command registers, no crash
+pi --no-extensions -e ./index.ts --no-session -p '/crew status'
+
+# 2. injection reaches the model and is NOT in history
+BLANCHE_ROLE=worker BLANCHE_TASK=<seeded task> \
+  pi --no-extensions -e ./index.ts --session-dir /tmp/blanche-smoke \
+     -p 'Reply with the phase name you were given.'
+# assert: the reply names the seeded phase   -> injection reached the model
+# assert: grep -c BLANCHE_MARKER /tmp/blanche-smoke/*.jsonl == 0
+#         -> the block never entered the transcript
+```
+
+That second assertion is stronger evidence than any mock: it reads the actual
+persisted session file. Seed the task with `createTask` from s01.
+
 ## Test cases
 
 ### Happy path
@@ -136,9 +170,19 @@ failure stop guessing, checkpoint, and consult the advisor.
 ### Edge cases
 - `contextPct` below `softLimit` → no `CONTEXT_PRESSURE` line; at or above → the
   line is present exactly once.
-- No checkpoint yet → block still renders, without an empty section.
-- A task title containing `'` and `$` survives spawn unmangled.
+- No checkpoint, no consultation, no `specBody` → the block still renders, with
+  those sections absent rather than present-and-empty.
 
 ### Regression
-- Two consecutive `buildCrewBlock` calls with the same input produce identical
-  strings (stable ordering — this is what keeps the prompt cache warm).
+- `buildCrewBlock` output is byte-identical across two calls with the same input,
+  including peer ordering when the peer array arrives shuffled.
+- Shell quoting: assert on the exact argv `spawnRole` would pass to herdr, with a
+  cwd containing a space and a single quote, and a session name containing `$`.
+  Those are the values actually interpolated — the task *title* never is, so the
+  earlier "title with quotes" case was testing the wrong string.
+
+### Not tested, deliberately
+- Role markdown content. Prose files do not get assertions.
+- Command/tool registration, publish/receive/dedupe/ack lifecycle, status bar.
+  Covered by the smoke procedure above; mocking pi to observe them would test
+  the mock.

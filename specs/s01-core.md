@@ -54,6 +54,12 @@ export function phaseOwner(crew: ResolvedCrew, phase: string): Role | undefined
 ```
 
 - Unknown workflow → throw naming the workflows that do exist.
+- Validation is minimal and structural, not a schema library: every workflow needs
+  a non-empty `prefix`, `roles`, `phases`; every phase owner must be a known
+  `Role`; `advisorAfter` is a non-negative integer or null; `maxRework` and
+  `maxWorkers` are non-negative integers. A bad value throws naming the JSON path
+  (`workflows.feat.phases[3].owner`). Nothing more — this file is written by the
+  user, not by an attacker.
 - `resolveCrew` merges `workflows[w].agents` over top-level `agents`, keeps only
   roster roles, and sets `configRevision` to a sha256 of the raw config text.
 - A role in `roles` that owns no phase is a service role. Expose
@@ -105,8 +111,13 @@ Pure. No fs, no clock — `now` and `handoffId` arrive in the input. Order:
 6. `reworkRound > maxRework` → error telling the caller to hand to the leader.
 7. No checkpoint recorded for the current epoch of `from` → push a warning note.
    Never blocks.
-8. Return the next board: phase, owner, `currentSpec`, and a `HandoffRecord`
-   appended to history with `ackedAt` unset.
+8. Return the next board, transitions defined exactly as:
+   - `phase = input.phase`
+   - `owner = phaseOwner(resolved, input.phase) ?? input.to` — the phase's
+     configured owner wins; an unknown phase name falls back to the destination.
+   - `currentSpec = input.spec ?? board.currentSpec`
+   - `history` gains a `HandoffRecord` with `ackedAt` unset.
+   - nothing else on the board changes.
 
 ## Acceptance criteria
 
@@ -119,6 +130,14 @@ Pure. No fs, no clock — `now` and `handoffId` arrive in the input. Order:
 
 ### Happy path
 - `resolveCrew(cfg, "feat")` returns the 6-role roster, 8 phases, `specs: true`.
+- Absent config file → `DEFAULT_CONFIG` is used, all seven workflows resolve, and
+  the file is written on first use.
+- A workflow-level agent override beats the top-level profile for that role only.
+- `serviceRoles(feat)` is `["researcher", "advisor"]`; `phaseOwner` returns the
+  configured owner and `undefined` for an unknown phase.
+- Task round-trip: `createTask` → `readBoard` → `writeBoard` → `readBoard`
+  preserves every field and bumps `revision` exactly once. One test, not four.
+- `commitBoard` with the current revision succeeds and persists.
 - Handoff planner → leader with phase `PLAN_REVIEW` targets the leader session.
 - Handoff qa → worker with `PASS` moves phase and owner, appends history.
 
@@ -138,6 +157,10 @@ Pure. No fs, no clock — `now` and `handoffId` arrive in the input. Order:
 - Missing checkpoint adds a note but the decision is still `ok: true`.
 
 ### Regression
-- `commitBoard` with a stale revision leaves the on-disk board untouched.
-- `writeBoard` interrupted mid-write leaves no partial `board.json` (simulate by
-  asserting the tmp-then-rename path is used).
+- `commitBoard` with a stale revision leaves the on-disk board untouched and
+  returns the current board.
+- A rejected `decideHandoff` returns a board deep-equal to the input board.
+- After `writeBoard`, no `.tmp` file remains and `readBoard` parses. Test the
+  observable contract — rename atomicity is the filesystem's guarantee, not
+  ours, and asserting "tmp-then-rename was used" tests the implementation path
+  rather than the behaviour.
