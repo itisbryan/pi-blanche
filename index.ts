@@ -1,15 +1,19 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildCrewBlock } from "./inject.ts";
 import { spawnRole } from "./spawn.ts";
 import { loadConfig, resolveCrew } from "./config.ts";
-import { createTask, readBoard, commitBoard } from "./board.ts";
+import { createTask, readBoard, commitBoard, taskDir } from "./board.ts";
 import { decideHandoff } from "./handoff.ts";
 import { registerLifecycle } from "./lifecycle.ts";
 import type { Board, Role } from "./types.ts";
 
 const namespace = "blanche/v1";
+const closePane = (paneId: string): Promise<void> => new Promise((done) => {
+  execFile(process.env.HERDR_BIN ?? "herdr", ["pane", "close", paneId], { shell: false }, () => done());
+});
 
 export function shouldDeliver(input: {
   payload: { taskId: string; handoffId: string; to: Role };
@@ -43,9 +47,16 @@ export default function blancheExtension(pi: any): void {
     const rolePrompt = readFileSync(resolve(import.meta.dirname, "roles", `${currentRole}.md`), "utf8");
     const specBody = currentBoard.currentSpec && currentBoard.specs[currentBoard.currentSpec]?.path
       ? readFileSync(currentBoard.specs[currentBoard.currentSpec].path, "utf8") : undefined;
+    const checkpointPath = state?.latestCheckpoint ? join(taskDir(currentBoard.id), state.latestCheckpoint) : "";
+    const checkpoint = checkpointPath && existsSync(checkpointPath) ? readFileSync(checkpointPath, "utf8") : undefined;
+    const consultation = [...currentBoard.consultations].reverse().find((item) =>
+      currentBoard.currentSpec ? item.spec === currentBoard.currentSpec : !item.spec,
+    );
+    const consultationPath = consultation ? join(taskDir(currentBoard.id), consultation.summaryPath) : "";
+    const consultationBody = consultationPath && existsSync(consultationPath) ? readFileSync(consultationPath, "utf8") : undefined;
     return { systemPrompt: buildCrewBlock({
-      role: currentRole, board: currentBoard, softLimit: 0.8, specBody,
-      checkpoint: state?.latestCheckpoint, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[], rolePrompt,
+      role: currentRole, board: currentBoard, softLimit: 0.8, specBody, checkpoint,
+      consultation: consultationBody, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[], rolePrompt,
     }) };
   });
   pi.on("session_compact", () => {
@@ -108,9 +119,11 @@ export default function blancheExtension(pi: any): void {
     const crew = resolveCrew(loadConfig(), workflow);
     const id = `${workflow}-${Date.now().toString(36)}`;
     const created = createTask({ id, workflow, title: description, description, cwd: process.cwd(), resolved: crew, prefix: crew.prefix, phase: crew.phases[0]?.name ?? "REQUESTED", owner: "leader", leader: { sessionName: pi.getSessionName?.() ?? "leader" } });
+    const openedPanes: string[] = [];
     try {
       for (const member of crew.roster) {
         const launched = await spawnRole({ role: member, board: created, profile: crew.agents[member], cwd: process.cwd() });
+        openedPanes.push(launched.paneId);
         created.sessions[member] = { sessionName: launched.sessionName, paneId: launched.paneId, contextEpoch: 0 };
       }
       commitBoard(created, created.revision);
@@ -118,7 +131,8 @@ export default function blancheExtension(pi: any): void {
       ctx?.ui?.setStatus?.("blanche", status);
       ctx?.ui?.notify?.(`Crew ${id} started: ${crew.roster.join(", ")}`, "info");
     } catch (error) {
-      throw new Error(`Crew kickoff failed after partial spawn: ${error instanceof Error ? error.message : String(error)}`);
+      await Promise.all(openedPanes.map((paneId) => closePane(paneId)));
+      throw new Error(`Crew kickoff failed after partial spawn; closed ${openedPanes.length} pane(s): ${error instanceof Error ? error.message : String(error)}`);
     }
   }});
 }
