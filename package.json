@@ -1,7 +1,6 @@
 {
 	"name": "pi-blanche",
 	"version": "0.1.0",
-	"private": true,
 	"type": "module",
 	"main": "index.ts",
 	"keywords": [
@@ -36,5 +35,7 @@
 		"tsx": "^4.23.12",
 		"typebox": "^1.3.17",
 		"typescript": "^7.0.2"
-	}
+	},
+	"license": "MIT",
+	"description": "Spin up a crew of pi sessions (planner, worker, qa, verifier, advisor) in herdr panes, coordinating over pi-intercom."
 }
