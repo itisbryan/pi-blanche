@@ -54,8 +54,10 @@ export default function blancheExtension(pi: any): void {
     );
     const consultationPath = consultation ? join(taskDir(currentBoard.id), consultation.summaryPath) : "";
     const consultationBody = consultationPath && existsSync(consultationPath) ? readFileSync(consultationPath, "utf8") : undefined;
+    const contextSession = state?.sessionName && channel ? (await channel.listSessions()).find((session: any) => session.name === state.sessionName) : undefined;
+    const softLimit = loadConfig().context.softLimit;
     return { systemPrompt: buildCrewBlock({
-      role: currentRole, board: currentBoard, softLimit: 0.8, specBody, checkpoint,
+      role: currentRole, board: currentBoard, softLimit, contextPct: contextSession?.contextPct, specBody, checkpoint,
       consultation: consultationBody, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[], rolePrompt,
     }) };
   });
