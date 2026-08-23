@@ -25,7 +25,7 @@ export function buildCrewBlock(input: {
     : "none";
   const summaries = Object.entries(board.specs)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([id, state]) => `${id}: ${state.status}, owner ${ownerFor(board, id)}, spec ${state.path}, rework ${state.reworkRound}`)
+    .map(([id, state]) => `${id}: ${state.status}, spec ${state.path}, rework ${state.reworkRound}`)
     .join("\n");
   const parts = [input.rolePrompt.trim(), section("Phases", phases), section("Board", task), section("Specs", summaries || spec), section("Current spec", spec)];
   if (board.history.length) {
@@ -39,9 +39,5 @@ export function buildCrewBlock(input: {
     parts.push("\nCONTEXT_PRESSURE — finish this step, then call checkpoint().");
   }
   return parts.join("\n").trim() + "\n";
-}
-
-function ownerFor(board: Board, spec: string): Role {
-  return spec === board.currentSpec ? board.owner : (board.specs[spec] ? board.owner : board.owner);
 }
 
