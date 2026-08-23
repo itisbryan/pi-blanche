@@ -9,5 +9,5 @@ export function decideHandoff(input:HandoffInput):HandoffDecision {
  if(state.reworkRound>board.resolved.maxRework)return{ok:false,error:`Maximum rework exceeded; hand to the leader`};
  const notes:string[]=[];if(board.resolved.advisorAfter!==null&&next.resolved.roster.includes("advisor")&&state.reworkRound>=board.resolved.advisorAfter&&(state.lastAdvisorConsultedRound===null||state.lastAdvisorConsultedRound<state.reworkRound))notes.push("Advisor consultation required for this rework round.");
  const epoch=board.sessions[from]?.contextEpoch;if(epoch!==undefined&&!board.sessions[from]?.latestCheckpoint?.includes(`e${epoch}`))notes.push(`Warning: no checkpoint recorded for ${from} at epoch ${epoch}.`);
- next.phase=input.phase;next.owner=next.resolved.phases.find(p=>p.name===input.phase)?.owner??next.owner;next.currentSpec=input.spec;next.history.push({handoffId:input.handoffId,from,to,spec:input.spec,phase:input.phase,verdict:input.verdict??null,sentAt:input.now});return{ok:true,board:next,notes,target};
+ next.phase=input.phase;next.owner=next.resolved.phases.find(p=>p.name===input.phase)?.owner??input.to;next.currentSpec=input.spec??board.currentSpec;next.history.push({handoffId:input.handoffId,from,to,spec:input.spec,phase:input.phase,verdict:input.verdict??null,sentAt:input.now});return{ok:true,board:next,notes,target};
 }

@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import type { AgentProfile, BlancheConfig, ResolvedCrew, Role } from "./types.js";
 
 export const DEFAULT_CONFIG_PATH = `${homedir()}/.pi/agent/pi-blanche.json`;
-const roles: Role[] = ["leader", "planner", "researcher", "advisor", "worker", "qa", "verifier"];
+const roles: Role[] = ["leader", "planner", "researcher", "advisor", "worker", "qa", "verifier"];\nconst rawTexts = new WeakMap<object, string>();\nfunction validate(cfg: BlancheConfig) { for (const [name,w] of Object.entries(cfg.workflows ?? {})) { const p=`workflows.${name}`; if(!w.prefix) throw new Error(`${p}.prefix`); if(!w.roles?.length) throw new Error(`${p}.roles`); if(!w.phases?.length) throw new Error(`${p}.phases`); w.phases.forEach((x,i)=>{if(!roles.includes(x.owner)) throw new Error(`${p}.phases[${i}].owner`)}); if(w.advisorAfter!==null&&(!Number.isInteger(w.advisorAfter)||w.advisorAfter<0)) throw new Error(`${p}.advisorAfter`); for(const k of ["maxRework","maxWorkers"] as const) if(!Number.isInteger(w[k])||w[k]<0) throw new Error(`${p}.${k}`); } }
 const baseAgents: Record<string, AgentProfile> = {
   planner:{model:"claude-bridge/claude-opus-5",thinking:"high"}, researcher:{model:"openai-codex/gpt-5.6-luna",thinking:"medium"}, advisor:{model:"openai-codex/gpt-5.6-luna",thinking:"xhigh"}, worker:{model:"claude-bridge/claude-sonnet-5",thinking:"low"}, qa:{model:"claude-bridge/claude-sonnet-5",thinking:"low"}, verifier:{model:"claude-bridge/claude-opus-5",thinking:"high"}
 };
@@ -20,14 +20,14 @@ export const DEFAULT_CONFIG: BlancheConfig = { agents: baseAgents, context:{soft
  review:{prefix:"rv",roles:["qa","verifier","advisor"],phases:phases(["REQUESTED","QA","VERIFY","DONE"],["leader","qa","verifier","leader"]),specs:false,advisorAfter:null,maxRework:0,maxWorkers:0}
 }};
 export function loadConfig(path = DEFAULT_CONFIG_PATH): BlancheConfig {
-  if (!existsSync(path)) { mkdirSync(dirname(path),{recursive:true}); writeFileSync(path, JSON.stringify(DEFAULT_CONFIG,null,2)+"\n"); return DEFAULT_CONFIG; }
-  return JSON.parse(readFileSync(path,"utf8"));
+  if (!existsSync(path)) { mkdirSync(dirname(path),{recursive:true}); const raw=JSON.stringify(DEFAULT_CONFIG,null,2)+"\n"; writeFileSync(path,raw); rawTexts.set(DEFAULT_CONFIG,raw); return DEFAULT_CONFIG; }
+  const raw=readFileSync(path,"utf8"); const cfg=JSON.parse(raw) as BlancheConfig; validate(cfg); rawTexts.set(cfg,raw); return cfg;
 }
 export function resolveCrew(cfg: BlancheConfig, workflow: string): ResolvedCrew {
   const w=cfg.workflows[workflow]; if(!w) throw new Error(`Unknown workflow '${workflow}'. Known workflows: ${Object.keys(cfg.workflows).join(", ")}`);
   const agents={...cfg.agents,...(w.agents??{})};
-  const roster=w.roles.filter(r=>r!=="leader");
-  return {workflow,prefix:w.prefix,roster,agents,phases:w.phases,specs:w.specs,advisorAfter:w.advisorAfter,maxRework:w.maxRework,maxWorkers:w.maxWorkers,configRevision:createHash("sha256").update(JSON.stringify(cfg)).digest("hex")};
+  const roster=w.roles.filter(r=>r!=="leader"); const selected=Object.fromEntries(roster.filter(r=>agents[r]).map(r=>[r,agents[r]]));
+  return {workflow,prefix:w.prefix,roster,agents:selected,phases:w.phases,specs:w.specs,advisorAfter:w.advisorAfter,maxRework:w.maxRework,maxWorkers:w.maxWorkers,configRevision:createHash("sha256").update(rawTexts.get(cfg) ?? JSON.stringify(cfg)).digest("hex")};
 }
 export function phaseOwner(crew: ResolvedCrew, phase: string): Role|undefined { return crew.phases.find(p=>p.name===phase)?.owner; }
 export function serviceRoles(crew: ResolvedCrew): Role[] { return crew.roster.filter(r=>!crew.phases.some(p=>p.owner===r)); }

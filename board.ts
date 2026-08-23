@@ -5,7 +5,7 @@ import type { Board, CheckpointInput, ConsultationRecord, Role } from "./types.j
 export const taskRoot=(cwd=join(homedir(),".pi/agent/pi-blanche/tasks"))=>cwd;
 export function taskDir(id:string){return join(taskRoot(),id)}
 const atomic=(path:string,data:string)=>{const tmp=path+".tmp";writeFileSync(tmp,data);renameSync(tmp,path)};
-export function createTask(input: any): Board { const id=input.id; const dir=taskDir(id); mkdirSync(join(dir,"specs","checkpoints","consultations"),{recursive:true}); writeFileSync(join(dir,"task.md"),input.description??"");
+export function createTask(input: any): Board { const id=input.id; const dir=taskDir(id); mkdirSync(join(dir,"specs"),{recursive:true}); mkdirSync(join(dir,"checkpoints"),{recursive:true}); mkdirSync(join(dir,"consultations"),{recursive:true}); writeFileSync(join(dir,"task.md"),input.description??"");
  const board:Board={id,workflow:input.workflow,prefix:input.prefix??input.resolved?.prefix??"",cwd:input.cwd??process.cwd(),status:"active",phase:input.phase??"REQUESTED",owner:input.owner??"leader",revision:0,task:{title:input.title??id,descriptionPath:"task.md"},specs:input.specs??{},consultations:[],leader:input.leader??{sessionName:"leader"},resolved:input.resolved,sessions:{},reworkRound:0,lastAdvisorConsultedRound:null,history:[]}; atomic(join(dir,"board.json"),JSON.stringify(board,null,2)); return board; }
 export function readBoard(id:string){return JSON.parse(readFileSync(join(taskDir(id),"board.json"),"utf8")) as Board}
 export function writeBoard(board:Board){board.revision++;atomic(join(taskDir(board.id),"board.json"),JSON.stringify(board,null,2))}
