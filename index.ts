@@ -30,6 +30,7 @@ export function shouldDeliver(input: {
 
 export default function blancheExtension(pi: any): void {
   let channel: any;
+  let lifecycleHandle: { handleAction(action: string, idArg?: string, ctx?: any): Promise<unknown> } | undefined;
   const sessions: Partial<Record<Role, { contextEpoch: number }>> = {};
   const seenHandoffIds = new Set<string>();
   const role = (): Role | undefined => process.env.BLANCHE_ROLE as Role | undefined;
@@ -84,7 +85,10 @@ export default function blancheExtension(pi: any): void {
       if (currentBoard && entry) { entry.ackedAt = Date.now(); commitBoard(currentBoard, currentBoard.revision); }
       pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
     },
-    onReady: (ready: any) => { channel = ready; registerLifecycle(pi, { channel: () => channel, liveSessions }); },
+    onReady: (ready: any) => {
+      channel = ready;
+      lifecycleHandle = registerLifecycle(pi, { channel: () => channel, liveSessions }) as any;
+    },
   });
 
   pi.registerTool?.({ name: "handoff", description: "Hand off the current crew task.", parameters: {}, execute: async (_id: string, input: any) => {
@@ -108,12 +112,17 @@ export default function blancheExtension(pi: any): void {
   pi.registerCommand?.("crew", { description: "Start or inspect a Blanche crew.", handler: async (raw: string, ctx: any) => {
     const args = raw.trim();
     if (args === "status") {
-      const current = board(); if (!current) { ctx?.ui?.notify?.("No active Blanche crew.", "info"); return; }
+      const current = board(); if (!current) { const status = "No active Blanche crew."; ctx?.ui?.notify?.(status, "info"); return status; }
       const roster = Object.entries(current.sessions).map(([r, s]) => `${r}: e${s?.contextEpoch ?? 0} ${s?.sessionName ?? "offline"}`).join(" | ");
       const status = `${current.phase} ▸ ${current.owner} ▸ ${current.currentSpec ?? "no spec"} ▸ rework ${current.reworkRound} | ${roster}`;
       ctx?.ui?.setStatus?.("blanche", status);
       ctx?.ui?.notify?.(status, "info");
-      return;
+      return status;
+    }
+    const lifecycleAction = /^(resume|stop|clean)(?:\s+(\S+))?$/.exec(args);
+    if (lifecycleAction) {
+      if (!lifecycleHandle) throw new Error("Crew lifecycle is not ready yet; try again shortly.");
+      return lifecycleHandle.handleAction(lifecycleAction[1], lifecycleAction[2], ctx);
     }
     const match = /^(\S+)\s+["']([\s\S]*)["']$/.exec(args);
     if (!match) throw new Error('Usage: /crew <workflow> "<description>"');
@@ -131,7 +140,9 @@ export default function blancheExtension(pi: any): void {
       commitBoard(created, created.revision);
       const status = `${created.phase} ▸ ${created.owner} ▸ ${created.currentSpec ?? "no spec"} ▸ rework ${created.reworkRound}`;
       ctx?.ui?.setStatus?.("blanche", status);
-      ctx?.ui?.notify?.(`Crew ${id} started: ${crew.roster.join(", ")}`, "info");
+      const message = `Crew ${id} started: ${crew.roster.join(", ")}`;
+      ctx?.ui?.notify?.(message, "info");
+      return message;
     } catch (error) {
       await Promise.all(openedPanes.map((paneId) => closePane(paneId)));
       throw new Error(`Crew kickoff failed after partial spawn; closed ${openedPanes.length} pane(s): ${error instanceof Error ? error.message : String(error)}`);
