@@ -148,7 +148,7 @@ export default function blancheExtension(pi: any): void {
       return message;
     } catch (error) {
       await Promise.all(openedPanes.map((paneId) => closePane(paneId)));
-      throw new Error(`Crew kickoff failed after partial spawn; closed ${openedPanes.length} pane(s): ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(`Crew kickoff failed; any opened panes were closed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }});
 }

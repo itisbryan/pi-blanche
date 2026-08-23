@@ -33,7 +33,7 @@ function paneId(value: unknown): string | undefined {
 
 export async function spawnRole(input: {
   role: Role; board: Board; profile: AgentProfile; cwd: string;
-  liveSessions?: () => Promise<string[]>;
+  liveSessions: () => Promise<string[]>;
 }): Promise<{ sessionName: string; paneId: string }> {
   const taskId = input.board.id;
   const sessionName = `${input.board.prefix}-${taskId}-${input.role}`;
@@ -45,7 +45,7 @@ export async function spawnRole(input: {
     await runHerdr(["pane", "run", id, command]);
     const deadline = Date.now() + Number(process.env.BLANCHE_REGISTRATION_TIMEOUT_MS ?? 20_000);
     while (Date.now() < deadline) {
-      const sessions = input.liveSessions ? await input.liveSessions() : await listSessions();
+      const sessions = await input.liveSessions();
       if (sessions.some((session) => typeof session === "string" ? session === sessionName : session.name === sessionName)) return { sessionName, paneId: id };
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -56,11 +56,3 @@ export async function spawnRole(input: {
   }
 }
 
-async function listSessions(): Promise<Array<{ name?: string }>> {
-  try {
-    const result = await runHerdr(["session", "list", "--json"]);
-    if (Array.isArray(result)) return result as Array<{ name?: string }>;
-    if (result && typeof result === "object" && Array.isArray((result as any).sessions)) return (result as any).sessions;
-  } catch {}
-  return [];
-}
