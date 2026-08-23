@@ -13,7 +13,7 @@ export function updateBoard(id:string,mutate:(b:Board)=>void):Board {
  const lock=join(taskDir(id),"board.json.lock"); const sleep=()=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,5);
  for(let i=0;i<20;i++){
   try {
-   // ponytail: stale-break races — two processes recovering from one crashed holder can both rmSync then both mkdir.
+   // ponytail: stale-break races — two processes recovering from one crashed holder can both rmSync then both mkdir. Upgrade path: O_EXCL lock file holding the owner pid, verified before breaking.
    if(existsSync(lock)&&Date.now()-statSync(lock).mtimeMs>5000) rmSync(lock,{recursive:true,force:true}); mkdirSync(lock);
   } catch { sleep(); continue; }
   try { const b=readBoard(id); mutate(b); writeBoard(b); return b; } finally { rmSync(lock,{recursive:true,force:true}); }
