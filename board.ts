@@ -1,0 +1,15 @@
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { Board, CheckpointInput, ConsultationRecord, Role } from "./types.js";
+export const taskRoot=(cwd=join(homedir(),".pi/agent/pi-blanche/tasks"))=>cwd;
+export function taskDir(id:string){return join(taskRoot(),id)}
+const atomic=(path:string,data:string)=>{const tmp=path+".tmp";writeFileSync(tmp,data);renameSync(tmp,path)};
+export function createTask(input: any): Board { const id=input.id; const dir=taskDir(id); mkdirSync(join(dir,"specs","checkpoints","consultations"),{recursive:true}); writeFileSync(join(dir,"task.md"),input.description??"");
+ const board:Board={id,workflow:input.workflow,prefix:input.prefix??input.resolved?.prefix??"",cwd:input.cwd??process.cwd(),status:"active",phase:input.phase??"REQUESTED",owner:input.owner??"leader",revision:0,task:{title:input.title??id,descriptionPath:"task.md"},specs:input.specs??{},consultations:[],leader:input.leader??{sessionName:"leader"},resolved:input.resolved,sessions:{},reworkRound:0,lastAdvisorConsultedRound:null,history:[]}; atomic(join(dir,"board.json"),JSON.stringify(board,null,2)); return board; }
+export function readBoard(id:string){return JSON.parse(readFileSync(join(taskDir(id),"board.json"),"utf8")) as Board}
+export function writeBoard(board:Board){board.revision++;atomic(join(taskDir(board.id),"board.json"),JSON.stringify(board,null,2))}
+export function commitBoard(next:Board, expectedRevision:number):{ok:true}|{ok:false,current:Board}{const current=readBoard(next.id);if(current.revision!==expectedRevision)return{ok:false,current};next.revision=expectedRevision;writeBoard(next);return{ok:true}}
+export function listTasks(cwd?:string){if(!existsSync(taskRoot()))return [];return readdirSync(taskRoot(),{withFileTypes:true}).filter(e=>e.isDirectory()).map(e=>{try{return readBoard(e.name)}catch{return null}}).filter((b):b is Board=>!!b&&(!cwd||b.cwd===cwd)).sort((a,b)=>b.id.localeCompare(a.id))}
+export function writeCheckpoint(board:Board,role:Role,spec:string|undefined,epoch:number,input:CheckpointInput){const name=`${spec??"task"}-${role}-e${epoch}.md`,path=join(taskDir(board.id),"checkpoints",name);const sections:[string, string|undefined][]=[['Completed',input.completed?.join("\n")],['Decisions',input.decisions?.join("\n")],['Failed approaches',input.failedApproaches?.map(x=>`${x.approach}: ${x.result} (${x.whyItFailed})`).join("\n")],['Current failures',input.currentFailures?.join("\n")],['Validation',input.validation?.join("\n")],['Files changed',input.filesChanged?.join("\n")],['Remaining',input.remaining?.join("\n")],['Next action',input.nextAction]];writeFileSync(path,sections.filter(([,v])=>v).map(([k,v])=>`## ${k}\n${v}`).join("\n\n")+"\n");return path}
+export function writeConsultation(board:Board,rec:ConsultationRecord,body:string){const path=join(taskDir(board.id),"consultations",rec.summaryPath);writeFileSync(path,body);return path}
