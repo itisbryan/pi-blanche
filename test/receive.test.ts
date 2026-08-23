@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { shouldDeliver } from "../index.ts";
+import { test } from "node:test";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+process.env.HOME = mkdtempSync(join("/tmp", "blanche-receive-home-"));
+
+const { default: blancheExtension, shouldDeliver } = await import("../index.ts");
+const { createTask, readBoard, taskDir, writeBoard } = await import("../board.ts");
 
 test("delivers matching unseen handoff", () => {
-  assert.equal(shouldDeliver({ payload: { taskId: "t1", handoffId: "h1", to: "worker" }, myTaskId: "t1", myRole: "worker", seenHandoffIds: [] }), true);
+  assert.equal(shouldDeliver({
+    payload: { taskId: "t1", handoffId: "h1", to: "worker" },
+    myTaskId: "t1", myRole: "worker", seenHandoffIds: [],
+  }), true);
 });
 
 test("rejects wrong task, role, duplicate, and malformed payload", () => {
@@ -15,4 +24,49 @@ test("rejects wrong task, role, duplicate, and malformed payload", () => {
   assert.doesNotThrow(() => shouldDeliver({ ...base, payload: null as any }));
   assert.doesNotThrow(() => shouldDeliver(null as any));
   assert.equal(shouldDeliver(null as any), false);
+});
+
+test("rejected handoff leaves board.json byte-identical", async () => {
+  const id = "receive-rejected";
+  const resolved = {
+    workflow: "quick", prefix: "qk", roster: ["worker", "qa"],
+    agents: {
+      worker: { model: "worker-model", thinking: "low" },
+      qa: { model: "qa-model", thinking: "low" },
+    },
+    phases: [{ name: "IMPLEMENTING", owner: "worker" }], specs: false,
+    advisorAfter: null, maxRework: 2, maxWorkers: 1, configRevision: "x",
+  };
+  const board = createTask({
+    id, workflow: "quick", prefix: "qk", title: "rejected", description: "d", resolved,
+  });
+  board.sessions = {
+    worker: { sessionName: "receive-worker", contextEpoch: 0 },
+    qa: { sessionName: "receive-qa", contextEpoch: 0 },
+  };
+  writeBoard(board);
+  const boardPath = join(taskDir(id), "board.json");
+  const before = readFileSync(boardPath, "utf8");
+  process.env.BLANCHE_TASK = id;
+  process.env.BLANCHE_ROLE = "qa";
+
+  const tools: Record<string, any> = {};
+  const channel = { listSessions: async () => [{ name: "receive-worker" }], publish: () => undefined };
+  const pi = {
+    on: () => undefined,
+    registerCommand: () => undefined,
+    registerTool: (tool: any) => { tools[tool.name] = tool; },
+    events: { emit: (_name: string, registration: any) => registration.onReady(channel) },
+    sendMessage: () => undefined,
+  };
+  blancheExtension(pi);
+
+  await assert.rejects(
+    () => tools.handoff.execute("call", {
+      to: "worker", phase: "IMPLEMENTING", spec: undefined,
+      message: "should not deliver", verdict: "APPROVED",
+    }), /PASS\|FAIL/,
+  );
+  assert.equal(readFileSync(boardPath, "utf8"), before);
+  assert.deepEqual(readBoard(id).history, []);
 });
