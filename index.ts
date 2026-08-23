@@ -1,73 +1,124 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { buildCrewBlock } from "./inject.ts";
 import { spawnRole } from "./spawn.ts";
-import { readBoard, commitBoard, writeCheckpoint, writeConsultation } from "./board.ts";
+import { loadConfig, resolveCrew } from "./config.ts";
+import { createTask, readBoard, commitBoard } from "./board.ts";
 import { decideHandoff } from "./handoff.ts";
+import { registerLifecycle } from "./lifecycle.ts";
 import type { Board, Role } from "./types.ts";
 
 const namespace = "blanche/v1";
 
+export function shouldDeliver(input: {
+  payload: { taskId: string; handoffId: string; to: Role };
+  myTaskId: string; myRole: Role; seenHandoffIds: string[];
+}): boolean {
+  const candidate = input as unknown as Record<string, unknown> | null | undefined;
+  const payload = candidate?.payload as Record<string, unknown> | null | undefined;
+  const seen = candidate?.seenHandoffIds;
+  return !!payload && typeof payload.taskId === "string" && typeof payload.handoffId === "string" &&
+    typeof payload.to === "string" && typeof candidate?.myTaskId === "string" && typeof candidate?.myRole === "string" &&
+    Array.isArray(seen) && payload.taskId === candidate.myTaskId && payload.to === candidate.myRole &&
+    !seen.includes(payload.handoffId);
+}
+
 export default function blancheExtension(pi: any): void {
   let channel: any;
   const sessions: Partial<Record<Role, { contextEpoch: number }>> = {};
+  const seenHandoffIds = new Set<string>();
   const role = (): Role | undefined => process.env.BLANCHE_ROLE as Role | undefined;
+  const taskId = (): string | undefined => process.env.BLANCHE_TASK;
   const board = (): Board | undefined => {
-    const id = process.env.BLANCHE_TASK;
-    if (!id) return undefined;
+    const id = taskId(); if (!id) return undefined;
     try { return readBoard(id); } catch { return undefined; }
   };
+  const liveSessions = async (): Promise<string[]> => channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
 
   pi.on("before_agent_start", async () => {
-    const currentRole = role();
-    const currentBoard = board();
+    const currentRole = role(); const currentBoard = board();
     if (!currentRole || !currentBoard) return;
     const state = currentBoard.sessions[currentRole];
     const rolePrompt = readFileSync(resolve(import.meta.dirname, "roles", `${currentRole}.md`), "utf8");
     const specBody = currentBoard.currentSpec && currentBoard.specs[currentBoard.currentSpec]?.path
       ? readFileSync(currentBoard.specs[currentBoard.currentSpec].path, "utf8") : undefined;
     return { systemPrompt: buildCrewBlock({
-      role: currentRole, board: currentBoard, softLimit: 0.8,
-      specBody, checkpoint: state?.latestCheckpoint, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[],
-      rolePrompt,
+      role: currentRole, board: currentBoard, softLimit: 0.8, specBody,
+      checkpoint: state?.latestCheckpoint, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[], rolePrompt,
     }) };
   });
   pi.on("session_compact", () => {
-    const currentRole = role();
-    if (currentRole) sessions[currentRole] = { contextEpoch: (sessions[currentRole]?.contextEpoch ?? 0) + 1 };
+    const currentRole = role(); if (!currentRole) return;
+    sessions[currentRole] = { contextEpoch: (sessions[currentRole]?.contextEpoch ?? 0) + 1 };
+    const currentBoard = board();
+    if (currentBoard?.sessions[currentRole]) {
+      currentBoard.sessions[currentRole]!.contextEpoch = sessions[currentRole]!.contextEpoch;
+      commitBoard(currentBoard, currentBoard.revision);
+    }
   });
+
   pi.events?.emit?.("intercom:extension-register", {
     namespace, ownerEligible: true,
-    onEvent: (event: any) => { if (event.type === "state" && event.state?.payload) channel = channel ?? undefined; },
-    onReady: (ready: any) => { channel = ready; },
+    onEvent: (event: any) => {
+      if (event.type !== "message" || !event.payload) return;
+      const currentTask = taskId(); const currentRole = role();
+      const payload = event.payload;
+      if (!currentTask || !currentRole || !shouldDeliver({ payload, myTaskId: currentTask, myRole: currentRole, seenHandoffIds: [...seenHandoffIds] })) return;
+      seenHandoffIds.add(payload.handoffId);
+      const currentBoard = board();
+      const entry = currentBoard?.history.find((h) => h.handoffId === payload.handoffId);
+      if (currentBoard && entry) { entry.ackedAt = Date.now(); commitBoard(currentBoard, currentBoard.revision); }
+      pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
+    },
+    onReady: (ready: any) => { channel = ready; registerLifecycle(pi, { channel: () => channel, liveSessions }); },
   });
 
   pi.registerTool?.({ name: "handoff", description: "Hand off the current crew task.", parameters: {}, execute: async (_id: string, input: any) => {
-    const currentBoard = board(); const from = role();
-    if (!currentBoard || !from) throw new Error("Not running in a Blanche crew session.");
-    const live = channel ? (await channel.listSessions()).map((s: any) => s.name) : [];
-    const decision = decideHandoff({ ...input, board: currentBoard, from, liveSessions: live, now: Date.now(), handoffId: crypto.randomUUID() });
-    if (!decision.ok) throw new Error(decision.error);
-    const committed = commitBoard(decision.board, currentBoard.revision);
-    if (!committed.ok) throw new Error("Board changed concurrently; retry handoff.");
-    channel?.publish({ type: "handoff", handoffId: decision.board.history.at(-1)?.handoffId, taskId: currentBoard.id, to: input.to });
-    return { content: [{ type: "text", text: "Handoff sent." }] };
+    const currentBoard = board(); const from = role(); if (!currentBoard || !from) throw new Error("Not running in a Blanche crew session.");
+    const handoffId = randomUUID();
+    let latest = currentBoard;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const decision = decideHandoff({ ...input, board: latest, from, liveSessions: await liveSessions(), now: Date.now(), handoffId });
+      if (!decision.ok) throw new Error(decision.error);
+      const committed = commitBoard(decision.board, latest.revision);
+      if (committed.ok) {
+        const record = decision.board.history.at(-1)!;
+        channel?.publish({ taskId: latest.id, handoffId, to: input.to, phase: input.phase, spec: input.spec, message: input.message, verdict: input.verdict, notes: decision.notes });
+        return { content: [{ type: "text", text: [input.message ?? "Handoff sent.", ...decision.notes].join("\n") }] };
+      }
+      latest = readBoard(latest.id);
+    }
+    throw new Error("Board changed concurrently; retry handoff.");
   }});
-  pi.registerTool?.({ name: "checkpoint", description: "Persist a crew checkpoint.", parameters: {}, execute: async (_id: string, input: any) => {
-    const currentBoard = board(); const from = role(); if (!currentBoard || !from) throw new Error("Not in a crew session.");
-    const path = writeCheckpoint(currentBoard, from, currentBoard.currentSpec, sessions[from]?.contextEpoch ?? 0, input);
-    return { content: [{ type: "text", text: path }] };
-  }});
-  pi.registerTool?.({ name: "consult", description: "Persist an advisor consultation.", parameters: {}, execute: async (_id: string, input: any) => {
-    const currentBoard = board(); const from = role(); if (!currentBoard || !from) throw new Error("Not in a crew session.");
-    const path = writeConsultation(currentBoard, { id: crypto.randomUUID(), role: "advisor", requestedBy: from, spec: currentBoard.currentSpec, reworkRound: currentBoard.currentSpec ? currentBoard.specs[currentBoard.currentSpec]?.reworkRound ?? 0 : currentBoard.reworkRound, summaryPath: "" }, input.body ?? "");
-    return { content: [{ type: "text", text: path }] };
-  }});
-  pi.registerCommand?.("crew", { description: "Manage a Blanche crew.", handler: async (args: string) => {
-    const [action] = args.trim().split(/\s+/);
-    if (action === "status") pi.sendMessage?.("Blanche status available in board.json");
-    else if (action === "stop") pi.sendMessage?.("Blanche crew stopped.");
-    else if (action === "clean" || action === "resume") pi.sendMessage?.(`crew ${action} is not available in this minimal integration`);
-    else pi.sendMessage?.(`crew workflow ${action ?? ""} requested`);
+
+  pi.registerCommand?.("crew", { description: "Start or inspect a Blanche crew.", handler: async (raw: string, ctx: any) => {
+    const args = raw.trim();
+    if (args === "status") {
+      const current = board(); if (!current) { ctx?.ui?.notify?.("No active Blanche crew.", "info"); return; }
+      const roster = Object.entries(current.sessions).map(([r, s]) => `${r}: e${s?.contextEpoch ?? 0} ${s?.sessionName ?? "offline"}`).join(" | ");
+      const status = `${current.phase} ▸ ${current.owner} ▸ ${current.currentSpec ?? "no spec"} ▸ rework ${current.reworkRound} | ${roster}`;
+      ctx?.ui?.setStatus?.("blanche", status);
+      ctx?.ui?.notify?.(status, "info");
+      return;
+    }
+    const match = /^(\S+)\s+["']([\s\S]*)["']$/.exec(args);
+    if (!match) throw new Error('Usage: /crew <workflow> "<description>"');
+    const [workflow, description] = [match[1], match[2]];
+    const crew = resolveCrew(loadConfig(), workflow);
+    const id = `${workflow}-${Date.now().toString(36)}`;
+    const created = createTask({ id, workflow, title: description, description, cwd: process.cwd(), resolved: crew, prefix: crew.prefix, phase: crew.phases[0]?.name ?? "REQUESTED", owner: "leader", leader: { sessionName: pi.getSessionName?.() ?? "leader" } });
+    try {
+      for (const member of crew.roster) {
+        const launched = await spawnRole({ role: member, board: created, profile: crew.agents[member], cwd: process.cwd() });
+        created.sessions[member] = { sessionName: launched.sessionName, paneId: launched.paneId, contextEpoch: 0 };
+      }
+      commitBoard(created, created.revision);
+      const status = `${created.phase} ▸ ${created.owner} ▸ ${created.currentSpec ?? "no spec"} ▸ rework ${created.reworkRound}`;
+      ctx?.ui?.setStatus?.("blanche", status);
+      ctx?.ui?.notify?.(`Crew ${id} started: ${crew.roster.join(", ")}`, "info");
+    } catch (error) {
+      throw new Error(`Crew kickoff failed after partial spawn: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }});
 }
