@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildCrewBlock } from "../inject.ts";
+import { buildRoleCommand } from "../spawn.ts";
 import type { Board } from "../types.ts";
 
 const board = (): Board => ({
@@ -13,7 +14,7 @@ const board = (): Board => ({
   }, sessions: { worker: { sessionName: "mb-t-1-worker", contextEpoch: 1 } }, reworkRound: 0, lastAdvisorConsultedRound: null, history: [],
 });
 
-const input = (contextPct?: number) => ({ role: "worker" as const, board: board(), specBody: "Acceptance criteria: prompt is ephemeral", checkpoint: "validated files", softLimit: 0.8, contextPct, peers: ["mb-t-1-qa", "mb-t-1-planner"], rolePrompt: "ROLE PROMPT" });
+const input = (contextPct?: number) => ({ role: "worker" as const, board: board(), specBody: "Goal: preserve ephemeral crew context.\nAcceptance criteria: prompt is ephemeral", checkpoint: "validated files", softLimit: 0.8, contextPct, peers: ["mb-t-1-qa", "mb-t-1-planner"], rolePrompt: "ROLE PROMPT" });
 
 test("renders worker block with spec, checkpoint, and peers", () => {
   const block = buildCrewBlock(input(0.5));
@@ -21,7 +22,12 @@ test("renders worker block with spec, checkpoint, and peers", () => {
   assert.match(block, /validated files/);
   assert.match(block, /mb-t-1-qa/);
   assert.match(block, /s02/);
+  assert.match(block, /preserve ephemeral crew context/);
   assert.match(block, /prompt is ephemeral/);
+});
+
+test("spawn command quotes spaces, apostrophes, and dollar signs exactly", () => {
+  assert.equal(buildRoleCommand({ role: "worker", taskId: "task $'quoted'", sessionName: "mb-$worker", profile: { model: "model $1", thinking: "low" } }), "BLANCHE_ROLE='worker' BLANCHE_TASK='task $'\\''quoted'\\''' pi --name 'mb-$worker' --model 'model $1' --thinking 'low'");
 });
 
 test("context pressure is absent below limit and present once at limit", () => {

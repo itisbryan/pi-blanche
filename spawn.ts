@@ -2,6 +2,13 @@ import { execFile } from "node:child_process";
 import type { AgentProfile, Board, Role } from "./types.ts";
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+export function buildRoleCommand(input: { role: Role; taskId: string; sessionName: string; profile: AgentProfile }): string {
+  return [
+    "BLANCHE_ROLE=" + shellQuote(input.role),
+    "BLANCHE_TASK=" + shellQuote(input.taskId),
+    "pi", "--name", shellQuote(input.sessionName), "--model", shellQuote(input.profile.model), "--thinking", shellQuote(input.profile.thinking),
+  ].join(" ");
+}
 const runHerdr = (args: string[]): Promise<unknown> => new Promise((resolve, reject) => {
   execFile(process.env.HERDR_BIN ?? "herdr", args, { shell: false }, (error, stdout, stderr) => {
     if (error) { reject(new Error(stderr.trim() || error.message)); return; }
@@ -26,11 +33,7 @@ export async function spawnRole(input: {
   const split = await runHerdr(["pane", "split", "--current", "--direction", "right", "--cwd", input.cwd]);
   const id = paneId(split);
   if (!id) throw new Error("Herdr pane split returned no pane id.");
-  const command = [
-    "BLANCHE_ROLE=" + shellQuote(input.role),
-    "BLANCHE_TASK=" + shellQuote(taskId),
-    "pi", "--name", shellQuote(sessionName), "--model", shellQuote(input.profile.model), "--thinking", shellQuote(input.profile.thinking),
-  ].join(" ");
+  const command = buildRoleCommand({ role: input.role, taskId, sessionName, profile: input.profile });
   try {
     await runHerdr(["pane", "run", id, command]);
     const deadline = Date.now() + Number(process.env.BLANCHE_REGISTRATION_TIMEOUT_MS ?? 20_000);
