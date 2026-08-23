@@ -136,7 +136,7 @@ export default function blancheExtension(pi: any): void {
     const openedPanes: string[] = [];
     try {
       for (const member of crew.roster) {
-        const launched = await spawnRole({ role: member, board: created, profile: crew.agents[member], cwd: process.cwd() });
+        const launched = await spawnRole({ role: member, board: created, profile: crew.agents[member], cwd: process.cwd(), liveSessions });
         openedPanes.push(launched.paneId);
         created.sessions[member] = { sessionName: launched.sessionName, paneId: launched.paneId, contextEpoch: 0 };
       }

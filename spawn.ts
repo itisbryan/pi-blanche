@@ -13,7 +13,13 @@ const runHerdr = (args: string[]): Promise<unknown> => new Promise((resolve, rej
   execFile(process.env.HERDR_BIN ?? "herdr", args, { shell: false }, (error, stdout, stderr) => {
     if (error) { reject(new Error(stderr.trim() || error.message)); return; }
     const lines = stdout.trim().split(/\r?\n/).reverse();
-    for (const line of lines) { try { resolve(JSON.parse(line)); return; } catch {} }
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        resolve(parsed && typeof parsed === "object" && "result" in parsed ? (parsed as { result: unknown }).result : parsed);
+        return;
+      } catch {}
+    }
     resolve(stdout.trim());
   });
 });
@@ -27,6 +33,7 @@ function paneId(value: unknown): string | undefined {
 
 export async function spawnRole(input: {
   role: Role; board: Board; profile: AgentProfile; cwd: string;
+  liveSessions?: () => Promise<string[]>;
 }): Promise<{ sessionName: string; paneId: string }> {
   const taskId = input.board.id;
   const sessionName = `${input.board.prefix}-${taskId}-${input.role}`;
@@ -38,8 +45,8 @@ export async function spawnRole(input: {
     await runHerdr(["pane", "run", id, command]);
     const deadline = Date.now() + Number(process.env.BLANCHE_REGISTRATION_TIMEOUT_MS ?? 20_000);
     while (Date.now() < deadline) {
-      const sessions = await listSessions();
-      if (sessions.some((session) => session.name === sessionName)) return { sessionName, paneId: id };
+      const sessions = input.liveSessions ? await input.liveSessions() : await listSessions();
+      if (sessions.some((session) => typeof session === "string" ? session === sessionName : session.name === sessionName)) return { sessionName, paneId: id };
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
     throw new Error(`Timed out waiting for ${sessionName} to register in pane ${id}.`);
