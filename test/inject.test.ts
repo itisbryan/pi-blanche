@@ -13,7 +13,7 @@ const board = (): Board => ({
   }, sessions: { worker: { sessionName: "mb-t-1-worker", contextEpoch: 1 } }, reworkRound: 0, lastAdvisorConsultedRound: null, history: [],
 });
 
-const input = (contextPct?: number) => ({ role: "worker" as const, board: board(), checkpoint: "validated files", softLimit: 0.8, contextPct, peers: ["mb-t-1-qa", "mb-t-1-planner"], rolePrompt: "ROLE PROMPT" });
+const input = (contextPct?: number) => ({ role: "worker" as const, board: board(), specBody: "Acceptance criteria: prompt is ephemeral", checkpoint: "validated files", softLimit: 0.8, contextPct, peers: ["mb-t-1-qa", "mb-t-1-planner"], rolePrompt: "ROLE PROMPT" });
 
 test("renders worker block with spec, checkpoint, and peers", () => {
   const block = buildCrewBlock(input(0.5));
@@ -21,6 +21,7 @@ test("renders worker block with spec, checkpoint, and peers", () => {
   assert.match(block, /validated files/);
   assert.match(block, /mb-t-1-qa/);
   assert.match(block, /s02/);
+  assert.match(block, /prompt is ephemeral/);
 });
 
 test("context pressure is absent below limit and present once at limit", () => {
@@ -28,8 +29,9 @@ test("context pressure is absent below limit and present once at limit", () => {
   assert.equal(buildCrewBlock(input(0.8)).match(/CONTEXT_PRESSURE/g)?.length, 1);
 });
 
-test("assembly is stable and omits missing checkpoint", () => {
-  const a = buildCrewBlock({ ...input(0), checkpoint: undefined });
-  assert.equal(a, buildCrewBlock({ ...input(0), checkpoint: undefined }));
-  assert.doesNotMatch(a, /Latest checkpoint/);
+test("assembly is stable and omits missing optional sections", () => {
+  const a = buildCrewBlock({ ...input(0), specBody: undefined, checkpoint: undefined, consultation: undefined, peers: ["z-peer", "a-peer"] });
+  const b = buildCrewBlock({ ...input(0), specBody: undefined, checkpoint: undefined, consultation: undefined, peers: ["a-peer", "z-peer"] });
+  assert.equal(a, b);
+  assert.doesNotMatch(a, /Latest checkpoint|Advisor consultation|Acceptance criteria/);
 });

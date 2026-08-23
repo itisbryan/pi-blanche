@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import type { Board, Role } from "./types.ts";
 
 function section(title: string, body: string): string {
@@ -8,6 +7,7 @@ function section(title: string, body: string): string {
 export function buildCrewBlock(input: {
   role: Role;
   board: Board;
+  specBody?: string;
   checkpoint?: string;
   consultation?: string;
   contextPct?: number;
@@ -20,9 +20,8 @@ export function buildCrewBlock(input: {
     .map((phase) => `${phase.name === board.phase ? "→ " : "  "}${phase.name} (${phase.owner})`)
     .join("\n");
   const task = `${board.task.title}\nphase: ${board.phase}\nowner: ${board.owner}`;
-  const specState = board.currentSpec ? board.specs[board.currentSpec] : undefined;
   const spec = board.currentSpec
-    ? `${board.currentSpec}${specState?.path ? `\n${readSpec(specState.path)}` : ""}`
+    ? `${board.currentSpec}${input.specBody?.trim() ? `\n${input.specBody.trim()}` : ""}`
     : "none";
   const summaries = Object.entries(board.specs)
     .sort(([a], [b]) => a.localeCompare(b))
@@ -46,6 +45,3 @@ function ownerFor(board: Board, spec: string): Role {
   return spec === board.currentSpec ? board.owner : (board.specs[spec] ? board.owner : board.owner);
 }
 
-function readSpec(path: string): string {
-  try { return readFileSync(path, "utf8").trim(); } catch { return ""; }
-}

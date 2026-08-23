@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { buildCrewBlock } from "./inject.ts";
 import { spawnRole } from "./spawn.ts";
 import { readBoard, commitBoard, writeCheckpoint, writeConsultation } from "./board.ts";
@@ -21,10 +23,13 @@ export default function blancheExtension(pi: any): void {
     const currentBoard = board();
     if (!currentRole || !currentBoard) return;
     const state = currentBoard.sessions[currentRole];
+    const rolePrompt = readFileSync(resolve(import.meta.dirname, "roles", `${currentRole}.md`), "utf8");
+    const specBody = currentBoard.currentSpec && currentBoard.specs[currentBoard.currentSpec]?.path
+      ? readFileSync(currentBoard.specs[currentBoard.currentSpec].path, "utf8") : undefined;
     return { systemPrompt: buildCrewBlock({
-      role: currentRole, board: currentBoard, softLimit: currentBoard.resolved ? 0.8 : 0.8,
-      checkpoint: state?.latestCheckpoint, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[],
-      rolePrompt: "You are a Blanche crew member. Follow the role contract and current approved spec.",
+      role: currentRole, board: currentBoard, softLimit: 0.8,
+      specBody, checkpoint: state?.latestCheckpoint, peers: Object.values(currentBoard.sessions).map((s) => s?.sessionName).filter(Boolean) as string[],
+      rolePrompt,
     }) };
   });
   pi.on("session_compact", () => {
