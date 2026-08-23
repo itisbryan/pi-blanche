@@ -9,7 +9,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
       "@earendil-works/*": ["/Users/itisbryan/.pi/agent/npm/node_modules/@earendil-works/*"],
       "typebox": ["/Users/itisbryan/.pi/agent/npm/node_modules/typebox"]
