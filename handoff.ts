@@ -4,7 +4,7 @@ export function decideHandoff(input:HandoffInput):HandoffDecision {
  if(to!=="leader"&&!board.resolved.roster.includes(to as Role))return{ok:false,error:`Role '${to}' is not in roster: ${board.resolved.roster.join(", ")}`};
  if(!target||!input.liveSessions.includes(target))return{ok:false,error:`Target session '${target??to}' is not live`};
  const allowed=from==="qa"?["PASS","FAIL"]:from==="verifier"?["APPROVED","CHANGES"]:[];if(allowed.length?(!input.verdict||!allowed.includes(input.verdict)):input.verdict!=null)return{ok:false,error:`Invalid verdict; allowed: ${allowed.length?allowed.join("|"):"none"}`};
- const next=structuredClone(board) as Board; const spec=input.spec&&next.specs[input.spec]; const state=spec??next; const bad=input.verdict==="FAIL"||input.verdict==="CHANGES";
+ const next=structuredClone(board) as Board; const spec=input.spec ? next.specs[input.spec] : undefined; const state=next.resolved.specs && spec ? spec : next; const bad=input.verdict==="FAIL"||input.verdict==="CHANGES";
  if(bad&&to==="worker")state.reworkRound++;
  if(state.reworkRound>board.resolved.maxRework)return{ok:false,error:`Maximum rework exceeded; hand to the leader`};
  const notes:string[]=[];if(board.resolved.advisorAfter!==null&&next.resolved.roster.includes("advisor")&&state.reworkRound>=board.resolved.advisorAfter&&(state.lastAdvisorConsultedRound===null||state.lastAdvisorConsultedRound<state.reworkRound))notes.push("Advisor consultation required for this rework round.");

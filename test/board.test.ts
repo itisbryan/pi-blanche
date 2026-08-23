@@ -1,2 +1,4 @@
 import { test } from 'node:test';
-test('board test suite',()=>{});
+import assert from 'node:assert/strict';
+import { taskDir } from '../board.ts';
+test('task directory is deterministic',()=>assert.match(taskDir('x'),/tasks\/x$/));
