@@ -104,6 +104,7 @@ export default function blancheExtension(pi: any): void {
     updateBoard(currentBoard.id, (fresh) => {
       const next = decideHandoff({ ...input, board: fresh, from, liveSessions: live, now: Date.now(), handoffId });
       if (!next.ok) throw new Error(next.error);
+      Object.assign(fresh, next.board);
       decision = next;
     });
     if (!decision?.ok) throw new Error("Handoff decision was not produced.");
