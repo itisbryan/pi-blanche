@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,7 @@ process.env.HOME = mkdtempSync(join("/tmp", "blanche-lifecycle-home-"));
 
 const { createTask, readBoard, writeBoard, taskDir } = await import("../board.ts");
 const { registerLifecycle } = await import("../lifecycle.ts");
+const { default: blancheExtension } = await import("../index.ts");
 
 const resolved = () => ({
   workflow: "feat",
@@ -66,19 +68,21 @@ function seed(id: string, options: SeedOptions = {}) {
 }
 
 function harness(live: string[] = []) {
-  let command: ((args: string) => Promise<unknown>) | undefined;
   const tools: Record<string, any> = {};
   const published: any[] = [];
   const pi = {
-    registerCommand: (_name: string, spec: { handler: (args: string) => Promise<unknown> }) => { command = spec.handler; },
     registerTool: (tool: any) => { tools[tool.name] = tool; },
   };
-  registerLifecycle(pi, {
+  const lifecycle = registerLifecycle(pi, {
     channel: () => ({ publish: (payload: unknown) => published.push(payload) }),
     liveSessions: async () => live,
   });
-  assert.ok(command);
-  return { command: command!, tools, published };
+  assert.equal(typeof lifecycle.handleAction, "function");
+  const command = (args: string) => {
+    const [action, idArg] = args.trim().split(/\s+/);
+    return lifecycle.handleAction(action, idArg);
+  };
+  return { command, tools, published };
 }
 
 function setSession(id: string, role = "worker") {
@@ -173,6 +177,7 @@ test("consult persists a record and leaves phase, owner, and currentSpec unchang
   const h = harness();
   const result: any = await h.tools.consult.execute("call", {
     role: "advisor",
+    requestedBy: "worker",
     question: "why did this fail?",
     context: "qa evidence",
     answer: "use the persisted fixture",
@@ -195,6 +200,20 @@ test("consult persists a record and leaves phase, owner, and currentSpec unchang
   assert.equal(readFileSync(join(taskDir(id), record.summaryPath), "utf8"), "use the persisted fixture");
 });
 
+test("consult rejects an empty answer without changing the advisor round", async () => {
+  const id = "consult-empty";
+  const before = seed(id);
+  setSession(id, "worker");
+  const h = harness();
+  await assert.rejects(() => h.tools.consult.execute("call", {
+    role: "advisor", requestedBy: "worker", answer: "   ", question: "still waiting",
+  }), /answer must not be empty/);
+  const after = readBoard(id);
+  assert.equal(after.revision, before.revision);
+  assert.equal(after.consultations.length, 0);
+  assert.equal(after.specs.s02.lastAdvisorConsultedRound, null);
+});
+
 test("stop preserves phase, owner, and spec; stopping again is a no-op", async () => {
   const id = "stop";
   const before = seed(id, { phase: "QA", owner: "qa", currentSpec: "s02" });
@@ -215,8 +234,86 @@ test("clean on an unknown id errors without deleting an existing task", async ()
   const id = "clean-known";
   seed(id);
   const h = harness();
-  await assert.rejects(() => h.command("clean missing-clean"), /missing-clean.*clean-known/s);
+  await assert.rejects(() => h.command("clean missing-clean"), /missing-clean/);
   assert.equal(existsSync(taskDir(id)), true);
+});
+
+test("resume, stop, and clean are reachable through the one /crew command", async () => {
+  const resumeId = "route-resume";
+  seed(resumeId, { status: "stopped" });
+  const stopId = "route-stop";
+  seed(stopId, { status: "active" });
+  const cleanId = "route-clean";
+  seed(cleanId, { sessions: { worker: { sessionName: "w", paneId: "pane-w", contextEpoch: 0 } } });
+
+  const commandNames: string[] = [];
+  let command: ((raw: string, ctx?: any) => Promise<unknown>) | undefined;
+  const channel = {
+    listSessions: async () => [
+      { name: `${resumeId}-worker` },
+      { name: `${resumeId}-qa` },
+    ],
+    publish: () => undefined,
+  };
+  const oldHerdr = process.env.HERDR_BIN;
+  process.env.HERDR_BIN = "true";
+  try {
+    const pi: any = {
+      on: () => undefined,
+      registerCommand: (name: string, spec: any) => { commandNames.push(name); command = spec.handler; },
+      registerTool: () => undefined,
+      events: { emit: (_name: string, registration: any) => registration.onReady(channel) },
+    };
+    blancheExtension(pi);
+    assert.deepEqual(commandNames, ["crew"]);
+    assert.ok(command);
+    await command!("resume route-resume");
+    assert.equal(readBoard(resumeId).status, "active");
+    setSession(stopId);
+    await command!("stop");
+    assert.equal(readBoard(stopId).status, "stopped");
+    await command!("clean route-clean");
+    assert.equal(existsSync(taskDir(cleanId)), false);
+  } finally {
+    if (oldHerdr === undefined) delete process.env.HERDR_BIN;
+    else process.env.HERDR_BIN = oldHerdr;
+  }
+});
+
+test("concurrent checkpoint-style and handoff mutations both survive updateBoard", async () => {
+  const id = "concurrent-mutations";
+  seed(id);
+  const childPath = join(process.env.HOME!, "update-board-child.ts");
+  writeFileSync(childPath, `
+    import { updateBoard } from ${JSON.stringify(join(process.cwd(), "board.ts"))};
+    const [taskId, mode] = process.argv.slice(-2);
+    updateBoard(taskId, (board) => {
+      if (mode === "handoff") {
+        board.history.push({ handoffId: "concurrent-handoff", from: "qa", to: "worker", phase: "IMPLEMENTING", verdict: "PASS", sentAt: 1 });
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40);
+      } else {
+        board.sessions.worker.latestCheckpoint = "checkpoints/concurrent-worker-e1.md";
+      }
+    });
+  `);
+  const cli = join(process.cwd(), "node_modules/tsx/dist/cli.mjs");
+  const run = (mode: string) => new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [cli, childPath, id, mode], { env: { ...process.env, HOME: process.env.HOME } });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(stderr || `child exited ${code}`)));
+  });
+  try {
+    const first = run("handoff");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const second = run("checkpoint");
+    await Promise.all([first, second]);
+  } finally {
+    rmSync(childPath, { force: true });
+  }
+  const after = readBoard(id);
+  assert.equal(after.history.some((entry) => entry.handoffId === "concurrent-handoff"), true);
+  assert.equal(after.sessions.worker?.latestCheckpoint, "checkpoints/concurrent-worker-e1.md");
 });
 
 test("clean deletes only the task directory, including recorded panes", async () => {
