@@ -63,6 +63,18 @@ export default function (pi) { ... }
 
 ### Commands (this spec)
 
+**`index.ts` owns the single `/crew` command registration.** `lifecycle.ts` does
+not register a command; it returns `handleAction(action, idArg, ctx)`, and this
+file delegates any action it does not handle itself. Registering `"crew"` from
+both files means one registration silently loses — found by running the
+extension for real: index won, so every lifecycle command was unreachable while
+48 unit tests stayed green. Unit tests cannot see this, because a test that
+calls `registerLifecycle` in isolation has nothing to collide with.
+
+Also note `registerLifecycle` is currently called from the channel's `onReady`
+callback, which fires after this file's synchronous registration — so delegation
+must not depend on lifecycle having been wired at load time.
+
 - `/crew <workflow> "<description>"` — resolve the crew, `createTask`, write
   `task.md`, spawn every roster role with `spawnRole`, record `sessionName` and
   `paneId` per role, commit, and report the roster.
