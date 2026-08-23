@@ -5,10 +5,10 @@ import { randomUUID } from "node:crypto";
 import { buildCrewBlock } from "./inject.ts";
 import { spawnRole } from "./spawn.ts";
 import { loadConfig, resolveCrew } from "./config.ts";
-import { createTask, readBoard, commitBoard, taskDir } from "./board.ts";
+import { createTask, readBoard, updateBoard, taskDir } from "./board.ts";
 import { decideHandoff } from "./handoff.ts";
 import { registerLifecycle } from "./lifecycle.ts";
-import type { Board, Role } from "./types.ts";
+import type { Board, HandoffDecision, Role } from "./types.ts";
 
 const namespace = "blanche/v1";
 const closePane = (paneId: string): Promise<void> => new Promise((done) => {
@@ -67,8 +67,9 @@ export default function blancheExtension(pi: any): void {
     sessions[currentRole] = { contextEpoch: (sessions[currentRole]?.contextEpoch ?? 0) + 1 };
     const currentBoard = board();
     if (currentBoard?.sessions[currentRole]) {
-      currentBoard.sessions[currentRole]!.contextEpoch = sessions[currentRole]!.contextEpoch;
-      commitBoard(currentBoard, currentBoard.revision);
+      updateBoard(currentBoard.id, (fresh) => {
+        fresh.sessions[currentRole]!.contextEpoch = sessions[currentRole]!.contextEpoch;
+      });
     }
   });
 
@@ -81,8 +82,12 @@ export default function blancheExtension(pi: any): void {
       if (!currentTask || !currentRole || !shouldDeliver({ payload, myTaskId: currentTask, myRole: currentRole, seenHandoffIds: [...seenHandoffIds] })) return;
       seenHandoffIds.add(payload.handoffId);
       const currentBoard = board();
-      const entry = currentBoard?.history.find((h) => h.handoffId === payload.handoffId);
-      if (currentBoard && entry) { entry.ackedAt = Date.now(); commitBoard(currentBoard, currentBoard.revision); }
+      if (currentBoard) {
+        updateBoard(currentBoard.id, (fresh) => {
+          const entry = fresh.history.find((h) => h.handoffId === payload.handoffId);
+          if (entry) entry.ackedAt = Date.now();
+        });
+      }
       pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
     },
     onReady: (ready: any) => {
@@ -94,19 +99,16 @@ export default function blancheExtension(pi: any): void {
   pi.registerTool?.({ name: "handoff", description: "Hand off the current crew task.", parameters: {}, execute: async (_id: string, input: any) => {
     const currentBoard = board(); const from = role(); if (!currentBoard || !from) throw new Error("Not running in a Blanche crew session.");
     const handoffId = randomUUID();
-    let latest = currentBoard;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const decision = decideHandoff({ ...input, board: latest, from, liveSessions: await liveSessions(), now: Date.now(), handoffId });
-      if (!decision.ok) throw new Error(decision.error);
-      const committed = commitBoard(decision.board, latest.revision);
-      if (committed.ok) {
-        const record = decision.board.history.at(-1)!;
-        channel?.publish({ taskId: latest.id, handoffId, to: input.to, phase: input.phase, spec: input.spec, message: input.message, verdict: input.verdict, notes: decision.notes });
-        return { content: [{ type: "text", text: [input.message ?? "Handoff sent.", ...decision.notes].join("\n") }] };
-      }
-      latest = readBoard(latest.id);
-    }
-    throw new Error("Board changed concurrently; retry handoff.");
+    const live = await liveSessions();
+    let decision: HandoffDecision | undefined;
+    updateBoard(currentBoard.id, (fresh) => {
+      const next = decideHandoff({ ...input, board: fresh, from, liveSessions: live, now: Date.now(), handoffId });
+      if (!next.ok) throw new Error(next.error);
+      decision = next;
+    });
+    if (!decision?.ok) throw new Error("Handoff decision was not produced.");
+    channel?.publish({ taskId: currentBoard.id, handoffId, to: input.to, phase: input.phase, spec: input.spec, message: input.message, verdict: input.verdict, notes: decision.notes });
+    return { content: [{ type: "text", text: [input.message ?? "Handoff sent.", ...decision.notes].join("\n") }] };
   }});
 
   pi.registerCommand?.("crew", { description: "Start or inspect a Blanche crew.", handler: async (raw: string, ctx: any) => {
@@ -137,7 +139,7 @@ export default function blancheExtension(pi: any): void {
         openedPanes.push(launched.paneId);
         created.sessions[member] = { sessionName: launched.sessionName, paneId: launched.paneId, contextEpoch: 0 };
       }
-      commitBoard(created, created.revision);
+      updateBoard(created.id, (fresh) => { fresh.sessions = created.sessions; });
       const status = `${created.phase} ▸ ${created.owner} ▸ ${created.currentSpec ?? "no spec"} ▸ rework ${created.reworkRound}`;
       ctx?.ui?.setStatus?.("blanche", status);
       const message = `Crew ${id} started: ${crew.roster.join(", ")}`;
