@@ -49,6 +49,28 @@ export function shouldDeliver(input: {
 	);
 }
 
+export function buildCrewWidget(
+	board: Board,
+	liveRoster: Array<{ name?: string; contextPct?: number }>,
+): string[] {
+	const liveByName = new Map(liveRoster.filter((session) => session.name).map((session) => [session.name, session]));
+	const currentRework = board.currentSpec ? board.specs[board.currentSpec]?.reworkRound ?? 0 : board.reworkRound;
+	const lines = [`blanche · ${board.id} · ${board.phase} · rework ${currentRework}/${board.resolved.maxRework}`];
+	for (const member of board.resolved.roster) {
+		const session = board.sessions[member];
+		const live = session?.sessionName ? liveByName.get(session.sessionName) : undefined;
+		const marker = board.owner === member ? "▸ " : "  ";
+		const name = session?.sessionName ?? "—";
+		const state = session ? (live ? "live" : "offline") : "not spawned";
+		const epoch = session ? `e${session.contextEpoch}` : "";
+		const context = live?.contextPct === undefined ? "" : ` ${Math.round(live.contextPct)}%`;
+		lines.push(`${marker}${member.padEnd(12)} ${name.padEnd(24)} ${state.padEnd(12)} ${epoch}${context}`.trimEnd());
+	}
+	const leaderLive = board.leader.sessionName ? liveByName.get(board.leader.sessionName) : undefined;
+	lines.push(`${board.owner === "leader" ? "▸ " : "  "}leader       ${board.leader.sessionName.padEnd(24)} ${leaderLive ? "live" : "offline"}`.trimEnd());
+	return lines;
+}
+
 export default function blancheExtension(pi: any): void {
 	let channel: any;
 	let lifecycleHandle:
@@ -56,6 +78,7 @@ export default function blancheExtension(pi: any): void {
 		| undefined;
 	const sessions: Partial<Record<Role, { contextEpoch: number }>> = {};
 	const seenHandoffIds = new Set<string>();
+	let uiContext: any;
 	const role = (): Role | undefined => currentRole();
 	const taskId = (): string | undefined =>
 		currentTaskId(process.cwd(), process.env.BLANCHE_TASK ? undefined : pi.getSessionName?.());
@@ -80,6 +103,7 @@ export default function blancheExtension(pi: any): void {
 			decision = next;
 		});
 		if (!decision?.ok) throw new Error("Handoff decision was not produced.");
+		void refreshWidget();
 		if (decision.notes.some((note) => note.toLowerCase().includes("advisor"))) {
 			await ensureRole(b, "advisor");
 		}
@@ -104,8 +128,21 @@ export default function blancheExtension(pi: any): void {
 			return undefined;
 		}
 	};
+	const liveRoster = async (): Promise<Array<{ name?: string; contextPct?: number }>> => {
+		if (!channel) return [];
+		try {
+			return (await channel.listSessions()).filter((session: any) => session.name);
+		} catch {
+			return [];
+		}
+	};
 	const liveSessions = async (): Promise<string[]> =>
-		channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
+		(await liveRoster()).flatMap((session) => (session.name ? [session.name] : []));
+	const refreshWidget = async (context = uiContext): Promise<void> => {
+		if (!context?.ui?.setWidget) return;
+		const current = board();
+		context.ui.setWidget("blanche", current ? buildCrewWidget(current, await liveRoster()) : undefined);
+	};
 	// ponytail: spawn-then-record reads a stale board, so two concurrent
 	// escalations could spawn duplicate advisor panes and leak the unrecorded
 	// one. Foreclosed by maxWorkers:1 today. Upgrade path: claim the session
@@ -131,9 +168,11 @@ export default function blancheExtension(pi: any): void {
 	// swallowed while still being marked acked, burning the handoff for good.
 	// Nothing is consumed until we can genuinely hand it to a turn.
 	let sessionReady = false;
-	pi.on("session_start", () => {
+	pi.on("session_start", (_event: any, context: any) => {
+		uiContext = context ?? uiContext;
 		sessionReady = true;
 		pullOwed();
+		void refreshWidget();
 	});
 
 	const deliver = (payload: any) => {
@@ -175,7 +214,10 @@ export default function blancheExtension(pi: any): void {
 	const pullOwed = () => {
 		const b = board();
 		const currentRole = role();
-		if (!b || !currentRole) return;
+		if (!b || !currentRole) {
+			void refreshWidget();
+			return;
+		}
 		const owed = pendingFor(b, currentRole);
 		if (owed) deliver({ ...owed, taskId: b.id });
 	};
@@ -243,6 +285,7 @@ export default function blancheExtension(pi: any): void {
 				if (session) session.contextEpoch = epoch;
 			});
 		}
+		void refreshWidget();
 	});
 
 	pi.events?.emit?.("intercom:extension-register", {
@@ -297,12 +340,14 @@ export default function blancheExtension(pi: any): void {
 	pi.registerCommand?.("crew", {
 		description: "Start or inspect a Blanche crew.",
 		handler: async (raw: string, ctx: any) => {
+			uiContext = ctx ?? uiContext;
 			const args = raw.trim();
 			if (args === "status") {
 				const current = board();
 				if (!current) {
 					const status = "No active Blanche crew.";
 					ctx?.ui?.notify?.(status, "info");
+					void refreshWidget(ctx);
 					return status;
 				}
 				const roster = Object.entries(current.sessions)
@@ -311,6 +356,7 @@ export default function blancheExtension(pi: any): void {
 				const status = `${current.phase} ▸ ${current.owner} ▸ ${current.currentSpec ?? "no spec"} ▸ rework ${current.reworkRound} | ${roster}`;
 				ctx?.ui?.setStatus?.("blanche", status);
 				ctx?.ui?.notify?.(status, "info");
+				void refreshWidget(ctx);
 				return status;
 			}
 			const lifecycleAction = /^(resume|stop|clean)(?:\s+(\S+))?$/.exec(args);
@@ -411,6 +457,7 @@ export default function blancheExtension(pi: any): void {
 				}
 				const message = `Crew ${id} started: ${crew.roster.join(", ")}${started}`;
 				ctx?.ui?.notify?.(message, "info");
+				void refreshWidget(ctx);
 				return message;
 			} catch (error) {
 				await Promise.all(openedPanes.map((paneId) => closePane(paneId)));
