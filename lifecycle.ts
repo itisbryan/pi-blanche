@@ -46,10 +46,6 @@ export function registerLifecycle(
 			}
 			const leaderName = `${b.resolved.prefix}-${b.id}-leader`;
 			pi.setSessionName?.(leaderName);
-			updateBoard(id, (x) => {
-				x.leader.sessionName = leaderName;
-				x.status = "active";
-			});
 			b = readBoard(id);
 			const live = await deps.liveSessions();
 			const missing = b.resolved.roster.filter(
@@ -65,12 +61,14 @@ export function registerLifecycle(
 				});
 				updateBoard(id, (x) => {
 					x.sessions[role] = { ...(x.sessions[role] ?? { contextEpoch: 0 }), ...spawned };
+					x.leader.sessionName = leaderName;
 					x.status = "active";
 				});
 				b = readBoard(id);
 			}
 			if (!missing.length)
 				updateBoard(id, (x) => {
+					x.leader.sessionName = leaderName;
 					x.status = "active";
 				});
 			b = readBoard(id);
