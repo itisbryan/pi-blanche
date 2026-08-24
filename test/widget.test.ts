@@ -317,6 +317,24 @@ test("shows current and next phases, including same-role researcher progress", (
 	assert.match(text, /researcher/i);
 });
 
+test("does not fabricate a next phase when the current phase is unknown", () => {
+	const text = stripAnsi(
+		mount(snapshot({ phase: "MYSTERY" }))
+			.component.render(40)
+			.join("\n"),
+	);
+	assert.match(text, /MYSTERY/);
+	assert.doesNotMatch(text, /DISCOVERY|PLANNING/);
+	assert.doesNotMatch(text, /complete/);
+});
+
+test("uses an unframed fallback below the framing threshold", () => {
+	for (const width of [23, 12, 8]) {
+		const text = stripAnsi(mount(snapshot()).component.render(width).join("\n"));
+		assert.doesNotMatch(text, /╭|╮|╰|╯|├|┤|│/);
+	}
+});
+
 test("hides zero rework and exposes positive and maximum rework", () => {
 	const zero = stripAnsi(
 		mount(snapshot({ reworkRound: 0 }))
