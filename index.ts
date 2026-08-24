@@ -48,6 +48,38 @@ export default function blancheExtension(pi: any): void {
 	const seenHandoffIds = new Set<string>();
 	const role = (): Role | undefined => currentRole();
 	const taskId = (): string | undefined => currentTaskId();
+
+	// Shared by the handoff tool and by kickoff's opening handoff.
+	const sendHandoff = async (b: Board, from: Role, input: any): Promise<string[]> => {
+		const handoffId = randomUUID();
+		const live = await liveSessions();
+		let decision: HandoffDecision | undefined;
+		updateBoard(b.id, (fresh) => {
+			const next = decideHandoff({
+				...input,
+				board: fresh,
+				from,
+				liveSessions: live,
+				now: Date.now(),
+				handoffId,
+			});
+			if (!next.ok) throw new Error(next.error);
+			Object.assign(fresh, next.board);
+			decision = next;
+		});
+		if (!decision?.ok) throw new Error("Handoff decision was not produced.");
+		channel?.publish({
+			taskId: b.id,
+			handoffId,
+			to: input.to,
+			phase: input.phase,
+			spec: input.spec,
+			message: input.message,
+			verdict: input.verdict,
+			notes: decision.notes,
+		});
+		return decision.notes;
+	};
 	const board = (): Board | undefined => {
 		const id = taskId();
 		if (!id) return undefined;
@@ -59,6 +91,15 @@ export default function blancheExtension(pi: any): void {
 	};
 	const liveSessions = async (): Promise<string[]> =>
 		channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
+
+	// The leader's own advertised name, not pi.getSessionName() — an unnamed
+	// session returns undefined there, and recording the literal "leader" matches
+	// no live session, so every handoff back to the operator fails liveness.
+	const selfName = async (): Promise<string | undefined> => {
+		const id = process.env.PI_INTERCOM_SESSION_ID;
+		if (!channel || !id) return undefined;
+		return (await channel.listSessions()).find((s: any) => s.id === id)?.name;
+	};
 
 	pi.on("before_agent_start", async () => {
 		const currentRole = role();
@@ -159,35 +200,9 @@ export default function blancheExtension(pi: any): void {
 			const currentBoard = board();
 			const from = role();
 			if (!currentBoard || !from) throw new Error("Not running in a Blanche crew session.");
-			const handoffId = randomUUID();
-			const live = await liveSessions();
-			let decision: HandoffDecision | undefined;
-			updateBoard(currentBoard.id, (fresh) => {
-				const next = decideHandoff({
-					...input,
-					board: fresh,
-					from,
-					liveSessions: live,
-					now: Date.now(),
-					handoffId,
-				});
-				if (!next.ok) throw new Error(next.error);
-				Object.assign(fresh, next.board);
-				decision = next;
-			});
-			if (!decision?.ok) throw new Error("Handoff decision was not produced.");
-			channel?.publish({
-				taskId: currentBoard.id,
-				handoffId,
-				to: input.to,
-				phase: input.phase,
-				spec: input.spec,
-				message: input.message,
-				verdict: input.verdict,
-				notes: decision.notes,
-			});
+			const notes = await sendHandoff(currentBoard, from, input);
 			return {
-				content: [{ type: "text", text: [input.message ?? "Handoff sent.", ...decision.notes].join("\n") }],
+				content: [{ type: "text", text: [input.message ?? "Handoff sent.", ...notes].join("\n") }],
 			};
 		},
 	});
@@ -221,6 +236,12 @@ export default function blancheExtension(pi: any): void {
 			const [workflow, description] = [match[1], match[2]];
 			const crew = resolveCrew(loadConfig(), workflow);
 			const id = `${workflow}-${Date.now().toString(36)}`;
+			const leaderName = (await selfName()) ?? pi.getSessionName?.();
+			if (!leaderName)
+				throw new Error(
+					"This session is not on the intercom roster, so the crew could never hand work back to you. " +
+						"Check the broker is up (`intercom status`), or start pi with --name.",
+				);
 			const created = createTask({
 				id,
 				workflow,
@@ -231,7 +252,7 @@ export default function blancheExtension(pi: any): void {
 				prefix: crew.prefix,
 				phase: crew.phases[0]?.name ?? "REQUESTED",
 				owner: "leader",
-				leader: { sessionName: pi.getSessionName?.() ?? "leader" },
+				leader: { sessionName: leaderName },
 			});
 			const openedPanes: string[] = [];
 			try {
@@ -255,13 +276,20 @@ export default function blancheExtension(pi: any): void {
 				});
 				const status = `${created.phase} ▸ ${created.owner} ▸ ${created.currentSpec ?? "no spec"} ▸ rework ${created.reworkRound}`;
 				ctx?.ui?.setStatus?.("blanche", status);
-				// The crew idles until the leader hands the work over; say so, or the
-				// panes just sit there looking broken.
-				const first = crew.phases.find((p) => p.owner !== "leader")?.owner ?? crew.roster[0];
-				const message =
-					`Crew ${id} started: ${crew.roster.join(", ")}\n` +
-					`Phase ${created.phase}, owned by you. Nothing runs until you hand off:\n` +
-					`  handoff({ to: "${first}", phase: "${crew.phases.find((p) => p.owner === first)?.name}", message: "..." })`;
+				// Kickoff hands the work over itself. `handoff` is an agent tool, so an
+				// operator has no way to call it — without this the crew spawns and sits
+				// at REQUESTED forever. The description IS the work.
+				const opening = crew.phases.find((p) => p.owner !== "leader");
+				let started = "";
+				if (opening) {
+					await sendHandoff(readBoard(created.id), "leader", {
+						to: opening.owner,
+						phase: opening.name,
+						message: description,
+					});
+					started = `\n${opening.name} \u25b8 ${opening.owner} \u2014 work handed over.`;
+				}
+				const message = `Crew ${id} started: ${crew.roster.join(", ")}${started}`;
 				ctx?.ui?.notify?.(message, "info");
 				return message;
 			} catch (error) {
