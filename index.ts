@@ -213,7 +213,7 @@ export default function blancheExtension(pi: any): void {
 		pi.sendMessage?.(
 			{
 				customType: "blanche_handoff",
-				content: payload.message ?? `Handoff for ${payload.phase}`,
+				content: [payload.message ?? `Handoff for ${payload.phase}`, ...(payload.notes ?? [])].join("\n"),
 				display: true,
 				details: payload,
 			},
