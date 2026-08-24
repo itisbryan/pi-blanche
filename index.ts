@@ -282,7 +282,7 @@ export default function blancheExtension(pi: any): void {
 		uiContext = context ?? uiContext;
 		sessionReady = true;
 		pullOwed();
-		void refreshWidget();
+		return refreshWidget();
 	});
 
 	const deliver = (payload: any) => {
