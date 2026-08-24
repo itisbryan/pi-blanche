@@ -127,6 +127,8 @@ now, could `/crew resume` reconstruct enough truth for each role to continue?*
 ```bash
 npm run verify    # biome ci + tsc --noEmit + guard + node --test
 npm run format
+BLANCHE_E2E=1 npm run e2e  # optional: real Herdr pane + model delivery turn
+BLANCHE_CLAUDE_BRIDGE=1 npm run e2e  # optional: claude-bridge tool-schema smoke
 ```
 
 `test/guard.sh` fails if any source file does not load or any test file contains

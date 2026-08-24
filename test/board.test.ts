@@ -8,9 +8,19 @@ import { test } from "node:test";
 // isolated HOME is all the sandboxing these tests need.
 process.env.HOME = mkdtempSync(join(tmpdir(), "blanche-home-"));
 
-const { taskDir, createTask, readBoard, writeBoard, updateBoard, listTasks, writeCheckpoint } = await import(
-	"../board.ts"
-);
+const {
+	taskDir,
+	createTask,
+	readBoard,
+	writeBoard,
+	updateBoard,
+	listTasks,
+	writeCheckpoint,
+	currentRole,
+	currentTaskId,
+	requireTaskId,
+	taskIdFromSessionName,
+} = await import("../board.ts");
 
 const crew = {
 	workflow: "feat",
@@ -34,6 +44,66 @@ const newTask = (id: string) =>
 		description: "requirement text",
 		resolved: crew,
 	});
+
+test("operator fallbacks resolve the leader role and the sole task", () => {
+	const oldRole = process.env.BLANCHE_ROLE;
+	const oldTask = process.env.BLANCHE_TASK;
+	delete process.env.BLANCHE_ROLE;
+	delete process.env.BLANCHE_TASK;
+	try {
+		assert.equal(currentRole(), "leader");
+		const cwd = mkdtempSync(join(tmpdir(), "blanche-fallback-"));
+		newTask("t-fallback");
+		const board = readBoard("t-fallback");
+		board.cwd = cwd;
+		writeBoard(board);
+		assert.equal(currentTaskId(cwd), "t-fallback");
+	} finally {
+		if (oldRole === undefined) delete process.env.BLANCHE_ROLE;
+		else process.env.BLANCHE_ROLE = oldRole;
+		if (oldTask === undefined) delete process.env.BLANCHE_TASK;
+		else process.env.BLANCHE_TASK = oldTask;
+	}
+});
+
+test("session identity resolves a known task before cwd ambiguity, and env wins", () => {
+	const oldTask = process.env.BLANCHE_TASK;
+	const cwd = mkdtempSync(join(tmpdir(), "blanche-session-name-"));
+	newTask("t-session-name");
+	const board = readBoard("t-session-name");
+	board.cwd = cwd;
+	writeBoard(board);
+	assert.equal(taskIdFromSessionName("mb-t-session-name-worker"), "t-session-name");
+	assert.equal(taskIdFromSessionName("unknown-t-session-name-worker"), undefined);
+	delete process.env.BLANCHE_TASK;
+	assert.equal(currentTaskId(cwd, "mb-t-session-name-worker"), "t-session-name");
+	process.env.BLANCHE_TASK = "explicit-task";
+	assert.equal(currentTaskId(cwd, "mb-t-session-name-worker"), "explicit-task");
+	if (oldTask === undefined) delete process.env.BLANCHE_TASK;
+	else process.env.BLANCHE_TASK = oldTask;
+});
+
+test("operator task fallback rejects ambiguous tasks with an explicit id hint", () => {
+	const oldTask = process.env.BLANCHE_TASK;
+	delete process.env.BLANCHE_TASK;
+	const cwd = mkdtempSync(join(tmpdir(), "blanche-ambiguous-"));
+	for (const id of ["t-ambiguous-a", "t-ambiguous-b"]) {
+		newTask(id);
+		const board = readBoard(id);
+		board.cwd = cwd;
+		writeBoard(board);
+	}
+	try {
+		assert.equal(currentTaskId(cwd), undefined, "passive context lookup must not guess");
+		assert.throws(() => requireTaskId(cwd), /Multiple tasks/);
+		assert.throws(() => requireTaskId(cwd), /t-ambiguous-a/);
+		assert.throws(() => requireTaskId(cwd), /t-ambiguous-b/);
+		assert.throws(() => requireTaskId(cwd), /\/crew <action> <id>/);
+	} finally {
+		if (oldTask === undefined) delete process.env.BLANCHE_TASK;
+		else process.env.BLANCHE_TASK = oldTask;
+	}
+});
 
 test("task directory is deterministic", () => {
 	assert.match(taskDir("x"), /tasks\/x$/);
