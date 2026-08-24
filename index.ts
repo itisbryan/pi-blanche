@@ -154,7 +154,16 @@ export default function blancheExtension(pi: any): void {
 	const refreshWidget = async (context = uiContext): Promise<void> => {
 		if (!context?.ui?.setWidget) return;
 		const current = board();
-		context.ui.setWidget("blanche", current ? buildCrewWidget(current, await liveRoster()) : undefined);
+		const name = sessionName();
+		const participant =
+			!!role() ||
+			(current !== undefined &&
+				(name === current.leader.sessionName ||
+					Object.values(current.sessions).some((session) => session?.sessionName === name)));
+		context.ui.setWidget(
+			"blanche",
+			current && participant ? buildCrewWidget(current, await liveRoster()) : undefined,
+		);
 	};
 	// ponytail: spawn-then-record reads a stale board, so two concurrent
 	// escalations could spawn duplicate advisor panes and leak the unrecorded
