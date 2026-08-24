@@ -1,4 +1,4 @@
-← [L-Thread](02-l-thread.md) · [Index](architecture.md) · next → [Crew](04-crew.md)
+[Index](architecture.md)
 
 # 3. Compaction
 
@@ -27,7 +27,7 @@ emits `session_compact`. A second scheduler would not add a capability; it would
 context.
 
 **3. Rehydration is already implemented — by the injection mechanism.** Because
-the block is rebuilt on every turn ([2.2](02-l-thread.md#22-reconstruction-not-retention)),
+the block is rebuilt on every turn ([2.2](l-thread.md#22-reconstruction-not-retention)),
 a session that has just compacted is re-briefed on its next turn. No rotation
 handler is required, because there is nothing to rotate: the block was never
 retained in the first place.
@@ -43,7 +43,7 @@ The rejected design also proposed passing each epoch's transcript through an
 
 This is a second compaction pipeline solving a problem the checkpoint schema
 already addresses. The structured fields of
-[2.5](02-l-thread.md#25-checkpoints) — particularly `failedApproaches` and
+[2.5](l-thread.md#25-checkpoints) — particularly `failedApproaches` and
 `validation` — exist precisely so that the agent that *holds* the knowledge
 records it directly, rather than a second agent inferring it from a transcript.
 If a checkpoint proves too thin to continue from, that is a prompt problem, not
@@ -115,7 +115,7 @@ checkpoints before compaction occurs.
    boundaries; a long turn can move the true value substantially past the
    reported one.
 
-Because of this, **semantic boundaries ([2.6](02-l-thread.md#26-checkpoint-boundaries))
+Because of this, **semantic boundaries ([2.6](l-thread.md#26-checkpoint-boundaries))
 are the primary mechanism and the soft limit is the backstop** — not the other
 way round. A worker that checkpoints after every qa failure is protected
 regardless of what the percentage says.
@@ -136,6 +136,3 @@ failed.
 This is precisely the content of `failedApproaches` and `currentFailures`, which
 is why those two fields carry the most weight in the schema.
 
----
-
-← [L-Thread](02-l-thread.md) · [Index](architecture.md) · next → [Crew](04-crew.md)

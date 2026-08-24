@@ -1,4 +1,4 @@
-← [Consistency](06-consistency.md) · [Index](architecture.md)
+[Index](architecture.md)
 
 # 7. Verification
 
@@ -239,7 +239,7 @@ should be treated as material, not cosmetic.**
   one tree collided at the version-control layer within minutes.
 - **Single host.** Broker and task directory are local.
 - **Advisory protocol.** Only the rework bound is enforced.
-- **Lock ceiling.** [6.3](06-consistency.md#63-known-ceiling).
+- **Lock ceiling.** [6.3](consistency.md#63-known-ceiling).
 - **Consultation model.** One-shot: the advisor records a conclusion, and there
   is no pending-request state. An earlier two-phase design wrote an empty
   consultation at *request* time and marked the round consulted before any
@@ -257,6 +257,3 @@ Verified against the running host (pi 0.84.2):
 | `session_compact` emitted **after** compaction | `agent-session.js:1441,1679` |
 | `reason: "manual" \| "threshold" \| "overflow"` | `extensions/types.d.ts:448` |
 
----
-
-← [Consistency](06-consistency.md) · [Index](architecture.md)

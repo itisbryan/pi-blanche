@@ -1,4 +1,4 @@
-← [Index](architecture.md) · next → [L-Thread](02-l-thread.md)
+[Index](architecture.md)
 
 # 1. The model
 
@@ -116,7 +116,7 @@ whether each role continues coherently.
 
 ### Why the board holds references, not content
 
-`board.json` is rewritten under a lock on every mutation ([6](06-consistency.md)).
+`board.json` is rewritten under a lock on every mutation ([6](consistency.md)).
 Two consequences follow from keeping it small:
 
 1. **The critical section stays cheap.** A board that inlined plan text and
@@ -151,6 +151,3 @@ from every prompt thereafter.
 - **No history compaction.** The board's `history` array grows without bound.
   At observed handoff rates (tens per task) this is not worth managing.
 
----
-
-← [Index](architecture.md) · next → [L-Thread](02-l-thread.md)

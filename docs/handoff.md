@@ -1,4 +1,4 @@
-← [Crew](04-crew.md) · [Index](architecture.md) · next → [Consistency](06-consistency.md)
+[Index](architecture.md)
 
 # 5. Handoff protocol
 
@@ -58,7 +58,7 @@ sessions to observe.
 
 The cost of purity is a discipline at the call site: the caller must write the
 returned board back. That discipline failed once — see
-[7.2](07-verification.md#72-three-defects-that-passed-a-green-suite), defect 2.
+[7.2](verification.md#72-three-defects-that-passed-a-green-suite), defect 2.
 
 ## 5.3 Decision order
 
@@ -165,7 +165,7 @@ Delivery requires **all three**:
 | `handoffId` unseen | `resume` deliberately republishes unacknowledged handoffs |
 
 The third is the subtle one and it is a direct coupling to
-[lifecycle](06-consistency.md): because `resume` republishes, a legitimate
+[lifecycle](consistency.md): because `resume` republishes, a legitimate
 duplicate *will* arrive, and must be suppressed rather than double-delivered.
 Removing either half — republishing unconditionally, or de-duplicating loosely —
 breaks the other.
@@ -225,9 +225,6 @@ unit under review.** A gate whose scope is wider than the unit it judges will
 produce unattributable failures, and an unattributed counter converts them into
 punishment.
 
-`Expected Write Scope` on the spec ([4.3](04-crew.md#43-specs)) is what makes
+`Expected Write Scope` on the spec ([4.3](crew.md#43-specs)) is what makes
 the attribution decidable.
 
----
-
-← [Crew](04-crew.md) · [Index](architecture.md) · next → [Consistency](06-consistency.md)

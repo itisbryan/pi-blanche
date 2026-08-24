@@ -26,19 +26,19 @@ The first governs the crew (§4–5), the second the L-Thread (§2–3).
 
 ## Reading order
 
-| # | Document | Answers |
-|---|---|---|
-| 1 | [The model](01-model.md) | What problem is being solved, what state exists, what may be destroyed |
-| 2 | [L-Thread](02-l-thread.md) | How work continues across contexts that keep dying |
-| 3 | [Compaction](03-compaction.md) | Why the system deliberately does *not* own compaction |
-| 4 | [Crew](04-crew.md) | Which agents exist, at what cost, and how a workflow is shaped |
-| 5 | [Handoff protocol](05-handoff.md) | How the task advances, and how a stuck loop terminates |
-| 6 | [Consistency](06-consistency.md) | How concurrent processes mutate one board without losing writes |
-| 7 | [Verification](07-verification.md) | What is proven, what is not, and what a green suite failed to catch |
+| Section | Answers |
+|---|---|
+| §1 [The model](model.md) | What problem is being solved, what state exists, what may be destroyed |
+| §2 [L-Thread](l-thread.md) | How work continues across contexts that keep dying |
+| §3 [Compaction](compaction.md) | Why the system deliberately does *not* own compaction |
+| §4 [Crew](crew.md) | Which agents exist, at what cost, and how a workflow is shaped |
+| §5 [Handoff protocol](handoff.md) | How the task advances, and how a stuck loop terminates |
+| §6 [Consistency](consistency.md) | How concurrent processes mutate one board without losing writes |
+| §7 [Verification](verification.md) | What is proven, what is not, and what a green suite failed to catch |
 
-Read 1 → 2 → 3 for the durability argument, or 1 → 4 → 5 for the coordination
-argument. Document 7 is worth reading independently: it records three defects
-that passed a fully green test suite, and the generalisations they support.
+§§1→2→3 give the durability argument; §§1→4→5 the coordination argument. §7
+ stands alone: it records three defects that passed a fully green test suite, and
+the generalisations they support.
 
 ## Glossary
 
@@ -61,10 +61,10 @@ Stated where they are established, collected here for reference.
 
 | | Invariant | Established in |
 |---|---|---|
-| **I1** | No fact required to continue T is stored only in volatile state. | [1](01-model.md) |
-| **I2** | The phase, spec and checkpoint an agent reads are current as of its turn. | [2](02-l-thread.md) |
-| **I3** | A rejected handoff leaves the board byte-identical. | [5](05-handoff.md) |
-| **I4** | Every board mutation is serialised and reads fresh state inside the lock. | [6](06-consistency.md) |
+| **I1** | No fact required to continue T is stored only in volatile state. | [§1.4](model.md#14-state-partition) |
+| **I2** | The phase, spec and checkpoint an agent reads are current as of its turn. | [§2.3](l-thread.md#23-ephemerality-of-the-injected-block) |
+| **I3** | A rejected handoff leaves the board byte-identical. | [§5.3](handoff.md#53-decision-order) |
+| **I4** | Every board mutation is serialised and reads fresh state inside the lock. | [§6.2](consistency.md#62-one-mutation-primitive) |
 
 ## Source map
 

@@ -1,4 +1,4 @@
-← [Handoff](05-handoff.md) · [Index](architecture.md) · next → [Verification](07-verification.md)
+[Index](architecture.md)
 
 # 6. Consistency
 
@@ -88,7 +88,7 @@ mutate the board is a second way to bypass the lock, and it will be used.
 
 This one was learned the hard way. The original loop wrapped the whole critical
 section in the retry catch. Because the handoff decision is computed *inside*
-the mutate callback ([5.4](05-handoff.md#54-delivery-and-acknowledgement)), a
+the mutate callback ([5.4](handoff.md#54-delivery-and-acknowledgement)), a
 legitimately rejected handoff threw from `mutate` — and `updateBoard` mistook it
 for lock contention, retried it twenty times, and reported `Board is busy;
 retry`. A verdict-validation failure surfaced as a lock error, and the real
@@ -161,6 +161,3 @@ order changed, which is a weaker statement than the one being made.
 | Operator restart | — | `resume` respawns missing roles from the snapshot |
 | Partial kickoff failure | tracked pane ids | opened panes closed before reporting |
 
----
-
-← [Handoff](05-handoff.md) · [Index](architecture.md) · next → [Verification](07-verification.md)

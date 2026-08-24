@@ -143,17 +143,17 @@ beyond the rework bound, owning compaction, worktrees.
 
 ## Design
 
-[`docs/architecture.md`](docs/architecture.md) is the index. Seven documents:
+[`docs/architecture.md`](docs/architecture.md) is the index. Seven sections:
 
-| | | |
-|---|---|---|
-| 1 | [The model](docs/01-model.md) | problem, state partition, what may be destroyed |
-| 2 | [L-Thread](docs/02-l-thread.md) | continuing work across contexts that keep dying |
-| 3 | [Compaction](docs/03-compaction.md) | why the system does *not* own compaction |
-| 4 | [Crew](docs/04-crew.md) | roles, capability allocation, workflow shapes |
-| 5 | [Handoff](docs/05-handoff.md) | how the task advances; how a stuck loop terminates |
-| 6 | [Consistency](docs/06-consistency.md) | concurrent mutation of one board |
-| 7 | [Verification](docs/07-verification.md) | what is proven, and three defects a green suite missed |
+| Section | |
+|---|---|
+| §1 [The model](docs/model.md) | problem, state partition, what may be destroyed |
+| §2 [L-Thread](docs/l-thread.md) | continuing work across contexts that keep dying |
+| §3 [Compaction](docs/compaction.md) | why the system does *not* own compaction |
+| §4 [Crew](docs/crew.md) | roles, capability allocation, workflow shapes |
+| §5 [Handoff](docs/handoff.md) | how the task advances; how a stuck loop terminates |
+| §6 [Consistency](docs/consistency.md) | concurrent mutation of one board |
+| §7 [Verification](docs/verification.md) | what is proven, and three defects a green suite missed |
 
 ## License
 

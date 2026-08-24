@@ -1,4 +1,4 @@
-← [Compaction](03-compaction.md) · [Index](architecture.md) · next → [Handoff](05-handoff.md)
+[Index](architecture.md)
 
 # 4. Crew
 
@@ -163,7 +163,7 @@ wants to read, and they are the shape a future scheduler would consume. Writing
 them costs nothing now; retrofitting them onto specs written without them would.
 
 `Expected Write Scope` has a second, present-day use: it is what makes the
-attribution rule in [5.5](05-handoff.md#55-escalation) decidable — whether a
+attribution rule in [5.5](handoff.md#55-escalation) decidable — whether a
 failure belongs to the spec under review or to another.
 
 ### Grooming
@@ -181,8 +181,5 @@ Two things fall out:
    construction rather than by review.
 
 qa also **authors the test files** — see
-[7.3](07-verification.md#73-why-qa-owns-the-tests) for the empirical reason.
+[7.3](verification.md#73-why-qa-owns-the-tests) for the empirical reason.
 
----
-
-← [Compaction](03-compaction.md) · [Index](architecture.md) · next → [Handoff](05-handoff.md)

@@ -1,4 +1,4 @@
-← [The model](01-model.md) · [Index](architecture.md) · next → [Compaction](03-compaction.md)
+[Index](architecture.md)
 
 # 2. L-Thread
 
@@ -167,7 +167,7 @@ pressure:
 - after an advisor consultation,
 - before the verifier,
 - after a substantial subtask,
-- and whenever context pressure says so ([3](03-compaction.md)).
+- and whenever context pressure says so ([3](compaction.md)).
 
 A purely pressure-driven policy would checkpoint when the context is nearly
 exhausted — simultaneously the least reliable moment to demand well-structured
@@ -178,6 +178,3 @@ immediately after a qa failure, when the failure is concrete and fresh.
 Pressure is therefore a *backstop*, and the semantic boundaries are the primary
 mechanism.
 
----
-
-← [The model](01-model.md) · [Index](architecture.md) · next → [Compaction](03-compaction.md)
