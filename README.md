@@ -32,8 +32,10 @@ files — not conversation that a compaction can eat.
 ## Install
 
 ```bash
-pi install npm:pi-blanche      # or clone and: pi --extension ./index.ts
+pi install git:github.com/itisbryan/pi-blanche
 ```
+
+Not on npm. For local development, clone and `pi --extension ./index.ts`.
 
 Requires pi, herdr 0.7.5+, and pi-intercom.
 
