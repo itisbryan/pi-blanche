@@ -129,6 +129,7 @@ npm run verify    # biome ci + tsc --noEmit + guard + node --test
 npm run format
 BLANCHE_E2E=1 npm run e2e  # optional: real Herdr pane + model delivery turn
 BLANCHE_CLAUDE_BRIDGE=1 npm run e2e  # optional: claude-bridge tool-schema smoke
+npm run load-window  # real pi load with an active task; checks source + installed copy
 ```
 
 `test/guard.sh` fails if any source file does not load or any test file contains

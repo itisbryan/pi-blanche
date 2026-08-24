@@ -19,7 +19,8 @@
 		"format": "biome format --write .",
 		"lint": "biome check .",
 		"verify": "biome ci . && npm run typecheck && npm test",
-		"e2e": "bash test/e2e.sh"
+		"e2e": "bash test/e2e.sh",
+		"load-window": "bash test/load-window.sh"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": "*",
