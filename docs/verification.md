@@ -240,11 +240,74 @@ Defect 4 is the sharpest instance of the rule in
 [§7.2.1](#721-generalisations): a confidently wrong value beats an absent one
 for how long it hides. Every observable said delivered.
 
-### Still unproven
+### The multi-role cycle, live
 
-A full multi-role cycle — worker → qa → verifier with a rework loop and an
-advisor escalation — has not been run live. Only the opening handoff of a
-two-role `investigate` has.
+A real `fix` cycle against a genuinely failing test suite reached, with no
+intervention:
+
+| Step | Observed |
+|---|---|
+| worker → qa | acked, on a real red `./test.sh` |
+| qa → worker `FAIL` | acked |
+| per-spec attribution | `s01.reworkRound = 1`, `board.reworkRound = 0`, sibling `s02 = 0` |
+| lazy advisor | absent at kickoff, spawned by the `advisorAfter` nudge |
+| worker → advisor | acked |
+
+That proves the mechanical half end to end: delivery, acknowledgement,
+per-spec rework attribution under a model that omitted `spec`, and on-demand
+service-role spawn.
+
+It then **stalled**: `consultations = 0`, `lastAdvisorConsultedRound = null`,
+no advisor → worker, no qa `PASS`, no verifier, no `DONE`.
+
+### Named ceiling: adherence at a multi-hop boundary
+
+The stall is not a defect in the transport, and we stopped rather than adding a
+fifth fix for it. What was ruled out, each by direct observation:
+
+- **Delivery** — the advisor acked the handoff, so the message arrived.
+- **Tooling** — a freshly spawned advisor session lists `consult`, `handoff`,
+  `checkpoint` and `intercom` on its first turn. The tool it must call is
+  registered and visible.
+- **Instruction clarity** — every delivered handoff now carries a board-derived
+  action line naming the task, role, phase, spec and the obligation to end the
+  turn with a `handoff`. The advisor additionally receives a consult-first
+  directive.
+- **The hop itself** — the identical advisor hop *succeeds* when the instruction
+  is hand-written by an operator. It fails when the same instruction is
+  generated inside the cycle.
+
+What remains is the model, holding the right tool, reading an explicit
+instruction in the message it is answering, and replying conversationally
+instead of acting.
+
+**This was observed with one agent profile, not proven universal.** The default
+advisor is `openai-codex/gpt-5.6-luna` at `xhigh`, and `spawn.ts` does pass
+`--thinking` through, so the pane runs at the configured budget. But adherence
+to "call this tool now" is a model property, and the profile is one line of
+config:
+
+```json
+"advisor": { "model": "claude-bridge/claude-opus-5", "thinking": "xhigh" }
+```
+
+Before treating this as inherent, try a different advisor model. A ceiling
+measured on a single profile is a measurement, not a law.
+
+Three role prompts and one delivery-content change were spent discovering this.
+The pattern each time was identical — a role treats an inbound handoff as
+conversation rather than an instruction — which is the same shape as the
+original qa stall in [§5.4](handoff.md#ownership-does-not-re-prompt). At the
+fourth instance we stopped patching, because a fifth prompt would have been
+treating a property of the agents as a property of the code.
+
+**Consequence for the design.** An advisory protocol assumes participants honour
+the protocol. pi-blanche enforces exactly one rule ([§5.5](handoff.md#55-escalation)),
+and this is the cost of that choice: a role that declines to hand off stalls its
+task, and nothing detects it. A stall detector or re-nudge timer was rejected —
+twice — as machinery for an adherence problem. That trade is still the right one
+at this scale, but it should be revisited if multi-hop stalls prove routine
+rather than occasional.
 
 Pane lifecycle *is* exercised against `test/fake-herdr.sh`, a stub emitting the
 real response envelopes, asserting that the identifier is extracted from
