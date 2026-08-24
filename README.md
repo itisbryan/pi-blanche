@@ -143,10 +143,17 @@ beyond the rework bound, owning compaction, worktrees.
 
 ## Design
 
-[`docs/architecture.md`](docs/architecture.md) — the L-Thread model (durable
-tasks over disposable contexts), why compaction is deliberately not owned, the
-crew coordination protocol, concurrency invariants, and a verification status
-including three defects that reached a fully green test suite.
+[`docs/architecture.md`](docs/architecture.md) is the index. Seven documents:
+
+| | | |
+|---|---|---|
+| 1 | [The model](docs/01-model.md) | problem, state partition, what may be destroyed |
+| 2 | [L-Thread](docs/02-l-thread.md) | continuing work across contexts that keep dying |
+| 3 | [Compaction](docs/03-compaction.md) | why the system does *not* own compaction |
+| 4 | [Crew](docs/04-crew.md) | roles, capability allocation, workflow shapes |
+| 5 | [Handoff](docs/05-handoff.md) | how the task advances; how a stuck loop terminates |
+| 6 | [Consistency](docs/06-consistency.md) | concurrent mutation of one board |
+| 7 | [Verification](docs/07-verification.md) | what is proven, and three defects a green suite missed |
 
 ## License
 
