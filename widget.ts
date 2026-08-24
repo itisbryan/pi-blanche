@@ -35,6 +35,13 @@ export function createCrewWidget(
 		clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
 	};
 	const color = (name: string, s: string) => opts.theme()[name]?.(s) ?? s;
+	const frameLine = (inner: string, left: string, right: string, fill: string, w: number) => {
+		const visible = inner.replace(new RegExp("\\x1b\\[[0-?]*[ -/]*[@-~]", "g"), "");
+		const chars = Array.from(visible);
+		const truncated = chars.length > w - 2;
+		const body = truncated ? chars.slice(0, Math.max(0, w - 3)).join("") + "…" : inner;
+		return left + body + fill.repeat(Math.max(0, w - 2 - Array.from(visible).length)) + right;
+	};
 	const fit = (s: string, w: number) => {
 		const raw = s.replace(new RegExp("\\x1b\\[[0-?]*[ -/]*[@-~]", "g"), "");
 		const n = Array.from(raw);
@@ -63,13 +70,21 @@ export function createCrewWidget(
 			pos = frame % (traceWidth + 1);
 		const tracer = glyph.h.repeat(pos) + glyph.dot + glyph.h.repeat(traceWidth - pos) + glyph.arrow;
 		const title = `${glyph.tl}${glyph.h} BLANCHE · ${b.workflow.toUpperCase()} · ${b.phase} ${tracer} ${next ? `${next.name}/${nextOwner}` : idx < 0 ? "" : "complete"} ${glyph.tr}`;
-		lines.push(fit(color("accent", title), width));
+		lines.push(frameLine(color("accent", title.slice(1, -1)), glyph.tl, glyph.tr, glyph.h, width));
 		let status = `${glyph.tl === "╭" ? "├─" : "+-"} CREW · ${b.id}`;
 		if (b.reworkRound > 0)
 			status += ` ${color(b.reworkRound >= b.resolved.maxRework ? "error" : "warning", `rework ${b.reworkRound}/${b.resolved.maxRework}`)}`;
 		const last = b.history.at(-1);
 		if (transitionActive) status += ` ${color("borderAccent", `HANDOFF ${last?.to ?? ""}`)}`;
-		lines.push(fit(status, width));
+		lines.push(
+			frameLine(
+				`${glyph.h}${status.slice(2)}`,
+				glyph.tl === "╭" ? "├" : "+",
+				glyph.tl === "╭" ? "┤" : "+",
+				glyph.h,
+				width,
+			),
+		);
 		const roster = ["leader", ...(t.roster.length ? t.roster : roles)] as Role[];
 		for (const role of roster) {
 			const session = role === "leader" ? b.leader.sessionName : b.sessions[role]?.sessionName;
@@ -95,16 +110,16 @@ export function createCrewWidget(
 			const provisionText = color(provisionToken, provision);
 			const label = you ? "YOU" : role === "leader" ? "OPERATOR" : "";
 			lines.push(
-				fit(
-					`${glyph.v} ${label ? `${label} · ` : ""}${role.toUpperCase()} ${owner} ${provisionText}`.replace(
-						/ +/g,
-						" ",
-					),
+				frameLine(
+					` ${label ? `${label} · ` : ""}${role.toUpperCase()} ${owner} ${provisionText}`.replace(/ +/g, " "),
+					glyph.v,
+					glyph.v,
+					" ",
 					width,
 				),
 			);
 		}
-		lines.push(fit(`${glyph.bl}${glyph.h.repeat(Math.max(1, width - 2))}${glyph.br}`, width));
+		lines.push(frameLine("", glyph.bl, glyph.br, glyph.h, width));
 		if (lines.length > 10) return [fit(`${b.phase} ${b.owner} ${b.id}`, width)];
 		while (lines.length < 3) lines.push(fit(`${glyph.v}`, width));
 		return lines.map((x) => fit(x, width));
