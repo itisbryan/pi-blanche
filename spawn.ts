@@ -97,6 +97,17 @@ export async function spawnRole(input: {
 		extensions: crewExtensions(),
 	});
 	try {
+		await runHerdr([
+			"pane",
+			"wait-output",
+			"--regex",
+			"[❯$%#>] ?$",
+			"--source",
+			"recent",
+			"--timeout",
+			process.env.BLANCHE_SHELL_READY_TIMEOUT_MS ?? "5000",
+			id,
+		]).catch(() => undefined);
 		await runHerdr(["pane", "run", id, command]);
 		const deadline = Date.now() + Number(process.env.BLANCHE_REGISTRATION_TIMEOUT_MS ?? 20_000);
 		while (Date.now() < deadline) {
