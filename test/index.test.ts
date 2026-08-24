@@ -511,8 +511,118 @@ test("delivery waits for session_start and passes a real CustomMessage shape", a
 		const deliveredContent = h.sent[0][0].content;
 		assert.equal(typeof deliveredContent, "string");
 		assert.ok((deliveredContent as string).includes(nonce));
+		assert.match(
+			deliveredContent as string,
+			/This is the final phase\. Report completion to the user and do not hand off\./,
+		);
 		assert.deepEqual(h.sent[0][1], { triggerTurn: true });
 		assert.equal(typeof readBoard(id).history[0].ackedAt, "number");
+	} finally {
+		restoreEnv("BLANCHE_TASK", oldTask);
+		restoreEnv("BLANCHE_ROLE", oldRole);
+	}
+});
+
+test("handoff delivery gives literal next-step, advisor, and fallback instructions", async () => {
+	const oldTask = process.env.BLANCHE_TASK;
+	const oldRole = process.env.BLANCHE_ROLE;
+	const capture = async (id: string, target: "worker" | "advisor"): Promise<string> => {
+		process.env.BLANCHE_TASK = id;
+		process.env.BLANCHE_ROLE = target;
+		const h = harness();
+		blancheExtension(h.pi);
+		const registration = h.getRegistration();
+		assert.ok(registration);
+		registration.onReady({ listSessions: async () => [], publish() {} });
+		h.handlers.get("session_start")?.();
+		await new Promise((resolve) => setImmediate(resolve));
+		const content = h.sent[0]?.[0]?.content;
+		assert.equal(typeof content, "string");
+		return content as string;
+	};
+	try {
+		createTask({
+			id: "delivery-next-phase",
+			workflow: "e2e",
+			title: "delivery-next-phase",
+			description: "next phase",
+			cwd: process.cwd(),
+			resolved: {
+				...resolved("worker"),
+				roster: ["worker", "qa"],
+				agents: { worker: { model: "test", thinking: "low" }, qa: { model: "test", thinking: "low" } },
+				phases: [
+					{ name: "REQUESTED", owner: "leader" },
+					{ name: "IMPLEMENTING", owner: "worker" },
+					{ name: "QA", owner: "qa" },
+				],
+			},
+			prefix: "e2e",
+			phase: "IMPLEMENTING",
+			owner: "worker",
+			leader: { sessionName: "e2e-leader" },
+		});
+		updateBoard("delivery-next-phase", (board) => {
+			board.sessions.worker = { sessionName: "e2e-delivery-next-phase-worker", contextEpoch: 0 };
+			board.history.push({
+				handoffId: "handoff-delivery-next-phase",
+				from: "leader",
+				to: "worker",
+				phase: "IMPLEMENTING",
+				verdict: null,
+				message: "next phase",
+				sentAt: 1,
+			});
+		});
+		const next = await capture("delivery-next-phase", "worker");
+		assert.match(next, /On success, hand off to qa with phase QA\./);
+		assert.match(next, /If you cannot, hand off to leader with the reason\./);
+
+		createTask({
+			id: "delivery-advisor-instruction",
+			workflow: "e2e",
+			title: "delivery-advisor-instruction",
+			description: "advisor phase",
+			cwd: process.cwd(),
+			resolved: {
+				...resolved("worker"),
+				roster: ["advisor"],
+				agents: { advisor: { model: "test", thinking: "low" } },
+				phases: [
+					{ name: "REQUESTED", owner: "leader" },
+					{ name: "INVESTIGATING", owner: "advisor" },
+					{ name: "REPORT", owner: "advisor" },
+				],
+			},
+			prefix: "e2e",
+			phase: "INVESTIGATING",
+			owner: "advisor",
+			leader: { sessionName: "e2e-leader" },
+		});
+		updateBoard("delivery-advisor-instruction", (board) => {
+			board.sessions.advisor = { sessionName: "e2e-delivery-advisor-instruction-advisor", contextEpoch: 0 };
+			board.history.push({
+				handoffId: "handoff-delivery-advisor-instruction",
+				from: "worker",
+				to: "advisor",
+				phase: "INVESTIGATING",
+				verdict: null,
+				message: "advise",
+				sentAt: 1,
+			});
+		});
+		const advisor = await capture("delivery-advisor-instruction", "advisor");
+		assert.match(
+			advisor,
+			/ACTION REQUIRED: call consult first, then handoff your advice back to the worker\./,
+		);
+
+		seedPending("delivery-fallback-instruction", "worker", "fallback");
+		updateBoard("delivery-fallback-instruction", (board) => {
+			board.history[0].phase = "UNKNOWN";
+		});
+		const fallback = await capture("delivery-fallback-instruction", "worker");
+		assert.match(fallback, /Complete this phase, then end your turn by calling handoff\(\.\.\.\)/);
 	} finally {
 		restoreEnv("BLANCHE_TASK", oldTask);
 		restoreEnv("BLANCHE_ROLE", oldRole);
