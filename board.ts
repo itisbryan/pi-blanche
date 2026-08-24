@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { DEFAULT_CONFIG } from "./config.ts";
 import type { Board, CheckpointInput, ConsultationRecord, Role } from "./types.js";
 export const taskRoot = (cwd = join(homedir(), ".pi/agent/pi-blanche/tasks")) => cwd;
 // The leader's session is not spawned by pi-blanche, so it has no BLANCHE_*
@@ -19,8 +20,8 @@ export const taskRoot = (cwd = join(homedir(), ".pi/agent/pi-blanche/tasks")) =>
 // starts. Resolve here so every call site agrees.
 export const currentRole = (): Role => (process.env.BLANCHE_ROLE as Role) ?? "leader";
 
-const SESSION_PREFIXES = ["qk", "fx", "hf", "mb", "rf", "iv", "rv"];
-const SESSION_ROLES = ["leader", "planner", "researcher", "advisor", "worker", "qa", "verifier"];
+const SESSION_PREFIXES = Object.values(DEFAULT_CONFIG.workflows).map((workflow) => workflow.prefix);
+const SESSION_ROLES = ["leader", ...Object.keys(DEFAULT_CONFIG.agents)] as Role[];
 if (
 	SESSION_PREFIXES.some((value) => value.includes("-")) ||
 	SESSION_ROLES.some((value) => value.includes("-"))
@@ -30,7 +31,11 @@ if (
 export function taskIdFromSessionName(name?: string): string | undefined {
 	if (!name) return undefined;
 	const parts = name.split("-");
-	if (parts.length < 3 || !SESSION_PREFIXES.includes(parts[0]) || !SESSION_ROLES.includes(parts.at(-1)!))
+	if (
+		parts.length < 3 ||
+		!SESSION_PREFIXES.includes(parts[0]) ||
+		!SESSION_ROLES.includes(parts.at(-1)! as Role)
+	)
 		return undefined;
 	return parts.slice(1, -1).join("-");
 }
