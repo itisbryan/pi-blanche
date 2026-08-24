@@ -225,6 +225,7 @@ export default function blancheExtension(pi: any): void {
 		const executionRoles: Role[] = ["researcher", "worker", "qa"];
 		const group = reviewRoles.includes(target) ? reviewRoles : executionRoles;
 		const existingPane = group.map((role) => b.sessions[role]?.paneId).find(Boolean);
+		// ponytail: naive 0.5 row-add preserves existing role PIDs; perfect reflow can wait.
 		const plan = planLateRole({
 			role: target,
 			leaderPaneId,
