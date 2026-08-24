@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { rmSync } from "node:fs";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import {
 	currentRole,
 	currentTaskId,
@@ -90,7 +92,20 @@ export function registerLifecycle(
 	pi.registerTool?.({
 		name: "checkpoint",
 		description: "Persist a crew checkpoint.",
-		parameters: {},
+		parameters: Type.Object({
+			completed: Type.Optional(Type.Array(Type.String())),
+			decisions: Type.Optional(Type.Array(Type.String())),
+			failedApproaches: Type.Optional(
+				Type.Array(
+					Type.Object({ approach: Type.String(), result: Type.String(), whyItFailed: Type.String() }),
+				),
+			),
+			currentFailures: Type.Optional(Type.Array(Type.String())),
+			validation: Type.Optional(Type.Array(Type.String())),
+			filesChanged: Type.Optional(Type.Array(Type.String())),
+			remaining: Type.Optional(Type.Array(Type.String())),
+			nextAction: Type.Optional(Type.String()),
+		}),
 		execute: async (_id: string, input: CheckpointInput) => {
 			const role = currentRole(),
 				b = readBoard(currentTaskId()!);
@@ -106,7 +121,20 @@ export function registerLifecycle(
 	pi.registerTool?.({
 		name: "consult",
 		description: "Record a consultation conclusion.",
-		parameters: {},
+		parameters: Type.Object({
+			role: StringEnum(["researcher", "advisor"] as const),
+			requestedBy: StringEnum([
+				"leader",
+				"planner",
+				"researcher",
+				"advisor",
+				"worker",
+				"qa",
+				"verifier",
+			] as const),
+			answer: Type.String({ description: "The distilled conclusion; empty is rejected." }),
+			spec: Type.Optional(Type.String()),
+		}),
 		execute: async (_id: string, input: any) => {
 			if (!input.answer?.trim()) throw Error("Consultation answer must not be empty");
 			const b = readBoard(currentTaskId()!);
