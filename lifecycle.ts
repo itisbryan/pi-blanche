@@ -44,6 +44,13 @@ export function registerLifecycle(
 						.join(", ")}`,
 				);
 			}
+			const leaderName = `${b.resolved.prefix}-${b.id}-leader`;
+			pi.setSessionName?.(leaderName);
+			updateBoard(id, (x) => {
+				x.leader.sessionName = leaderName;
+				x.status = "active";
+			});
+			b = readBoard(id);
 			const live = await deps.liveSessions();
 			const missing = b.resolved.roster.filter(
 				(r) => !b.sessions[r] || !live.includes(b.sessions[r]?.sessionName),
