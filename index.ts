@@ -170,6 +170,12 @@ export default function blancheExtension(pi: any): void {
 				widgetTui = tui;
 				const component = createCrewWidget(widgetSnapshot ?? initial, {
 					tui,
+					clock: {
+						setInterval: (fn, ms) => setInterval(fn, ms),
+						clearInterval: (timer) => clearInterval(timer as unknown as ReturnType<typeof setInterval>),
+						setTimeout: (fn, ms) => setTimeout(fn, ms),
+						clearTimeout: (timer) => clearTimeout(timer as unknown as ReturnType<typeof setTimeout>),
+					},
 					theme: () => {
 						const liveTheme = context.ui.theme;
 						if (liveTheme?.fg) {
