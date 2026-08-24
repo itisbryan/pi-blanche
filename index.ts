@@ -176,7 +176,10 @@ export default function blancheExtension(pi: any): void {
 							return {
 								accent: (text: string) => liveTheme.fg("accent", text),
 								borderAccent: (text: string) => liveTheme.fg("borderAccent", text),
+								dim: (text: string) => liveTheme.fg("dim", text),
 								error: (text: string) => liveTheme.fg("error", text),
+								muted: (text: string) => liveTheme.fg("muted", text),
+								success: (text: string) => liveTheme.fg("success", text),
 								warning: (text: string) => liveTheme.fg("warning", text),
 							};
 						}
