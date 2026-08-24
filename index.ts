@@ -92,7 +92,18 @@ export default function blancheExtension(pi: any): void {
 	const liveSessions = async (): Promise<string[]> =>
 		channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
 
+	// pi.sendMessage is a no-op until the session is actually running, and the
+	// channel becomes ready during startup — so an early delivery would be
+	// swallowed while still being marked acked, burning the handoff for good.
+	// Nothing is consumed until we can genuinely hand it to a turn.
+	let sessionReady = false;
+	pi.on("session_start", () => {
+		sessionReady = true;
+		pullOwed();
+	});
+
 	const deliver = (payload: any) => {
+		if (!sessionReady) return;
 		const currentTask = taskId();
 		const currentRole = role();
 		if (
