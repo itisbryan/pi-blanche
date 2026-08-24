@@ -17,6 +17,7 @@ import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
 import { registerLifecycle } from "./lifecycle.ts";
+import { createCrewWidget } from "./widget.ts";
 import { spawnRole } from "./spawn.ts";
 import type { Board, HandoffDecision, Role } from "./types.ts";
 
@@ -47,35 +48,6 @@ export function shouldDeliver(input: {
 		payload.to === candidate.myRole &&
 		!seen.includes(payload.handoffId)
 	);
-}
-
-export function buildCrewWidget(
-	board: Board,
-	liveRoster: Array<{ name?: string; contextPct?: number }>,
-): string[] {
-	const liveByName = new Map(
-		liveRoster.filter((session) => session.name).map((session) => [session.name, session]),
-	);
-	const currentRework = board.currentSpec
-		? (board.specs[board.currentSpec]?.reworkRound ?? 0)
-		: board.reworkRound;
-	const lines = [
-		`blanche · ${board.id} · ${board.phase} · rework ${currentRework}/${board.resolved.maxRework}`,
-	];
-	for (const member of board.resolved.roster) {
-		const session = board.sessions[member];
-		const live = session?.sessionName ? liveByName.get(session.sessionName) : undefined;
-		const marker = board.owner === member ? "▸ " : "  ";
-		const state = session ? (live ? "live" : "offline") : "not spawned";
-		const epoch = session ? `e${session.contextEpoch}` : "";
-		const context = live?.contextPct === undefined ? "" : ` ${Math.round(live.contextPct)}%`;
-		lines.push(`${marker}${member.padEnd(12)} ${state.padEnd(12)} ${epoch}${context}`.trimEnd());
-	}
-	const leaderLive = board.leader.sessionName ? liveByName.get(board.leader.sessionName) : undefined;
-	lines.push(
-		`${board.owner === "leader" ? "▸ " : "  "}leader       ${leaderLive ? "live" : "offline"}`.trimEnd(),
-	);
-	return lines;
 }
 
 export default function blancheExtension(pi: any): void {
@@ -151,6 +123,10 @@ export default function blancheExtension(pi: any): void {
 	};
 	const liveSessions = async (): Promise<string[]> =>
 		(await liveRoster()).flatMap((session) => (session.name ? [session.name] : []));
+	let widgetKey: string | undefined;
+	let widgetSnapshot: Parameters<typeof createCrewWidget>[0] | undefined;
+	let widgetComponent: ReturnType<typeof createCrewWidget> | undefined;
+	let widgetTui: { requestRender(): void } | undefined;
 	const refreshWidget = async (context = uiContext): Promise<void> => {
 		if (!context?.ui?.setWidget) return;
 		const current = board();
@@ -160,9 +136,45 @@ export default function blancheExtension(pi: any): void {
 			(current !== undefined &&
 				(name === current.leader.sessionName ||
 					Object.values(current.sessions).some((session) => session?.sessionName === name)));
+		if (!current || !participant) {
+			widgetComponent?.dispose();
+			widgetComponent = undefined;
+			widgetSnapshot = undefined;
+			widgetKey = undefined;
+			widgetTui = undefined;
+			context.ui.setWidget("blanche", undefined);
+			return;
+		}
+		const live = await liveRoster();
+		const snapshot: Parameters<typeof createCrewWidget>[0] = {
+			board: current,
+			viewer: { role: process.env.BLANCHE_ROLE as Role | undefined, sessionName: name },
+			liveRoster: live,
+		};
+		const key = `${current.id}|${snapshot.viewer.role ?? ""}|${snapshot.viewer.sessionName ?? ""}`;
+		widgetSnapshot = snapshot;
+		if (widgetKey === key) {
+			widgetComponent?.update(snapshot);
+			widgetTui?.requestRender();
+			return;
+		}
+		widgetComponent?.dispose();
+		widgetComponent = undefined;
+		widgetTui = undefined;
+		widgetKey = key;
+		const initial = widgetSnapshot;
+		if (!initial) return;
 		context.ui.setWidget(
 			"blanche",
-			current && participant ? buildCrewWidget(current, await liveRoster()) : undefined,
+			(tui: { requestRender(): void }, theme: Record<string, (s: string) => string>) => {
+				widgetTui = tui;
+				const component = createCrewWidget(widgetSnapshot ?? initial, {
+					tui,
+					theme: () => context.ui.theme ?? theme,
+				});
+				widgetComponent = component;
+				return component;
+			},
 		);
 	};
 	// ponytail: spawn-then-record reads a stale board, so two concurrent
