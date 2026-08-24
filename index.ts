@@ -23,6 +23,15 @@ import type { Board, HandoffDecision, Role } from "./types.ts";
 import { createCrewWidget } from "./widget.ts";
 
 const namespace = "blanche/v1";
+const paneIds = (value: unknown, ids: string[] = []): string[] => {
+	if (Array.isArray(value)) for (const item of value) paneIds(item, ids);
+	else if (value && typeof value === "object") {
+		const record = value as Record<string, unknown>;
+		if (typeof record.pane_id === "string") ids.push(record.pane_id);
+		for (const child of Object.values(record)) paneIds(child, ids);
+	}
+	return ids;
+};
 const closePane = (paneId: string): Promise<void> =>
 	new Promise((done) => {
 		execFile(process.env.HERDR_BIN ?? "herdr", ["pane", "close", paneId], { shell: false }, () => done());
@@ -540,8 +549,14 @@ export default function blancheExtension(pi: any): void {
 					const columnRoles = groups.execution.includes(member) ? groups.execution : groups.review;
 					const rowCommand = firstInColumn ? undefined : planRows(targetPane, columnRoles)[rowIndex - 1];
 					if (!firstInColumn && !rowCommand) throw new Error(`Missing planned row split for ${member}.`);
+					const beforeRows =
+						rowCommand && !process.env.HERDR_BIN ? paneIds(await runHerdr(["pane", "list", "--json"])) : [];
 					const result = rowCommand ? await runHerdr(rowCommand) : undefined;
-					const plannedPane = result ? extractPaneId(result) : undefined;
+					let plannedPane = result ? extractPaneId(result) : undefined;
+					if (rowCommand && !process.env.HERDR_BIN && plannedPane === targetPane) {
+						const afterRows = paneIds(await runHerdr(["pane", "list", "--json"]));
+						plannedPane = afterRows.find((pane) => !beforeRows.includes(pane));
+					}
 					if (rowCommand && !plannedPane)
 						throw new Error(`Planned row split returned no pane for ${member}.`);
 					const launched = await spawnRole({
