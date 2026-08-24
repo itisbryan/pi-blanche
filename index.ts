@@ -550,11 +550,11 @@ export default function blancheExtension(pi: any): void {
 					const rowCommand = firstInColumn ? undefined : planRows(targetPane, columnRoles)[rowIndex - 1];
 					if (!firstInColumn && !rowCommand) throw new Error(`Missing planned row split for ${member}.`);
 					const beforeRows =
-						rowCommand && !process.env.HERDR_BIN ? paneIds(await runHerdr(["pane", "list", "--json"])) : [];
+						rowCommand && !process.env.HERDR_BIN ? paneIds(await runHerdr(["pane", "list"])) : [];
 					const result = rowCommand ? await runHerdr(rowCommand) : undefined;
 					let plannedPane = result ? extractPaneId(result) : undefined;
 					if (rowCommand && !process.env.HERDR_BIN && plannedPane === targetPane) {
-						const afterRows = paneIds(await runHerdr(["pane", "list", "--json"]));
+						const afterRows = paneIds(await runHerdr(["pane", "list"]));
 						plannedPane = afterRows.find((pane) => !beforeRows.includes(pane));
 					}
 					if (rowCommand && !plannedPane)
