@@ -536,24 +536,26 @@ export default function blancheExtension(pi: any): void {
 				if (executionColumn) for (const role of groups.execution) rolePane.set(role, executionColumn);
 				const usedColumns = new Set<string>();
 				const rowIndexes = new Map<string, number>();
+				const lastRowPane = new Map<string, string>();
 				for (const member of crew.roster) {
 					if (!eagerRoles.has(member)) continue;
-					const targetPane = groups.execution.includes(member)
+					const columnPane = groups.execution.includes(member)
 						? (executionColumn ?? leaderPaneId)
 						: groups.review.includes(member)
 							? (reviewColumn ?? leaderPaneId)
 							: leaderPaneId;
 					const stackKey = groups.execution.includes(member) ? "execution" : "review";
 					const firstInColumn = !usedColumns.has(stackKey);
+					const splitTarget = firstInColumn ? columnPane : (lastRowPane.get(stackKey) ?? columnPane);
 					const rowIndex = rowIndexes.get(stackKey) ?? 0;
 					const columnRoles = groups.execution.includes(member) ? groups.execution : groups.review;
-					const rowCommand = firstInColumn ? undefined : planRows(targetPane, columnRoles)[rowIndex - 1];
+					const rowCommand = firstInColumn ? undefined : planRows(splitTarget, columnRoles)[rowIndex - 1];
 					if (!firstInColumn && !rowCommand) throw new Error(`Missing planned row split for ${member}.`);
 					const beforeRows =
 						rowCommand && !process.env.HERDR_BIN ? paneIds(await runHerdr(["pane", "list"])) : [];
 					const result = rowCommand ? await runHerdr(rowCommand) : undefined;
 					let plannedPane = result ? extractPaneId(result) : undefined;
-					if (rowCommand && !process.env.HERDR_BIN && plannedPane === targetPane) {
+					if (rowCommand && !process.env.HERDR_BIN && plannedPane === splitTarget) {
 						const afterRows = paneIds(await runHerdr(["pane", "list"]));
 						plannedPane = afterRows.find((pane) => !beforeRows.includes(pane));
 					}
@@ -565,8 +567,9 @@ export default function blancheExtension(pi: any): void {
 						profile: crew.agents[member],
 						cwd: process.cwd(),
 						liveSessions,
-						...(plannedPane ? { paneId: plannedPane } : { paneId: targetPane }),
+						paneId: plannedPane ?? columnPane,
 					});
+					lastRowPane.set(stackKey, launched.paneId);
 					rowIndexes.set(stackKey, rowIndex + 1);
 					usedColumns.add(stackKey);
 					rolePane.set(member, launched.paneId);
