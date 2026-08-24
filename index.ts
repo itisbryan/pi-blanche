@@ -222,13 +222,21 @@ export default function blancheExtension(pi: any): void {
 		}
 		// sendMessage takes a CustomMessage, not a string. Passing a string silently
 		// injects nothing, which is why handoffs acked but no turn ever ran.
+		const phaseIndex = currentBoard?.resolved.phases.findIndex((phase) => phase.name === payload.phase) ?? -1;
+		const nextPhase = phaseIndex >= 0 ? currentBoard?.resolved.phases[phaseIndex + 1] : undefined;
+		const terminalInstruction =
+			payload.to === "advisor"
+				? "ACTION REQUIRED: call consult first, then handoff your advice back to the worker."
+				: nextPhase
+					? `On success, hand off to ${nextPhase.owner} with phase ${nextPhase.name}. ${payload.to === "leader" ? "If blocked, stop and ask the user for the missing input. Do not hand off to leader." : "If you cannot, hand off to leader with the reason."}`
+					: currentBoard && phaseIndex >= 0
+						? "This is the final phase. Report completion to the user and do not hand off."
+						: `Complete this phase, then end your turn by calling handoff(...). ${payload.to === "leader" ? "If blocked, stop and ask the user for the missing input. Do not hand off to leader." : "If you cannot, hand off to leader with the reason."}`;
 		const actionLines = [
 			`[blanche] You are now ${payload.to} for ${payload.taskId}, phase ${payload.phase}${payload.spec ? `, spec ${payload.spec}` : ""}.`,
-			`This is work, not conversation. Complete this phase, then end your turn by calling handoff(...). ${payload.to === "leader" ? "If blocked, stop and ask the user for the missing input. Do not hand off to leader." : "If you cannot, handoff to leader with the reason."}`,
+			"This is work, not conversation.",
+			terminalInstruction,
 			...(payload.verdict ? [`Incoming verdict: ${payload.verdict}`] : []),
-			...(payload.to === "advisor"
-				? ["ACTION REQUIRED: call consult first, then handoff your advice back to the worker."]
-				: []),
 		];
 		pi.sendMessage?.(
 			{
