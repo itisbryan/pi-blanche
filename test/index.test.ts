@@ -19,13 +19,13 @@ type Command = (raw: string, ctx?: unknown) => Promise<string>;
 type Tool = Record<string, unknown> & { name: string; execute: (...args: unknown[]) => Promise<unknown> };
 type Call = [Record<string, unknown>, Record<string, unknown>];
 
-function harness() {
+function harness(initialSessionName = "operator") {
 	const handlers = new Map<string, Handler>();
 	const commands = new Map<string, Command>();
 	const tools = new Map<string, Tool>();
 	const sent: Call[] = [];
 	let registration: Registration | undefined;
-	let sessionName = "operator";
+	let sessionName = initialSessionName;
 	const pi = {
 		on(name: string, handler: Handler) {
 			handlers.set(name, handler);
@@ -207,6 +207,56 @@ test("kickoff diagnoses missing pi-intercom before creating a task", async () =>
 		assert.equal(listTasks(cwd).length, 0, "missing intercom must create no task");
 	} finally {
 		process.chdir(oldCwd);
+	}
+});
+
+test("crew widget is hidden from bystanders and shown to participants", async () => {
+	const oldCwd = process.cwd();
+	const oldRole = process.env.BLANCHE_ROLE;
+	const cwd = mkdtempSync(join(tmpdir(), "blanche-widget-participants-"));
+	const id = "widget-participants";
+	process.chdir(cwd);
+	createTask({
+		id,
+		workflow: "e2e",
+		title: id,
+		description: "widget participant test",
+		cwd,
+		resolved: resolved("worker"),
+		prefix: "e2e",
+		phase: "IMPLEMENTING",
+		owner: "worker",
+		leader: { sessionName: "leader-session" },
+	});
+	updateBoard(id, (board) => {
+		board.sessions.worker = { sessionName: "worker-session", contextEpoch: 0 };
+	});
+
+	const capture = async (name: string, explicitRole?: string): Promise<unknown> => {
+		if (explicitRole) process.env.BLANCHE_ROLE = explicitRole;
+		else delete process.env.BLANCHE_ROLE;
+		const h = harness(name);
+		const calls: Array<[unknown, unknown]> = [];
+		blancheExtension(h.pi);
+		const registration = h.getRegistration();
+		assert.ok(registration);
+		registration.onReady({ listSessions: async () => [], publish() {} });
+		h.handlers.get("session_start")?.(
+			{},
+			{ ui: { setWidget: (widgetName: unknown, widget: unknown) => calls.push([widgetName, widget]) } },
+		);
+		await new Promise((resolve) => setImmediate(resolve));
+		return calls[calls.length - 1]?.[1];
+	};
+
+	try {
+		assert.equal(await capture("operator"), undefined, "unrelated operator must not see the widget");
+		assert.ok(Array.isArray(await capture("operator", "worker")), "BLANCHE_ROLE participant");
+		assert.ok(Array.isArray(await capture("leader-session")), "leader participant");
+		assert.ok(Array.isArray(await capture("worker-session")), "recorded role participant");
+	} finally {
+		process.chdir(oldCwd);
+		restoreEnv("BLANCHE_ROLE", oldRole);
 	}
 });
 
