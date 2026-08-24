@@ -117,6 +117,14 @@ export default function blancheExtension(pi: any): void {
 		pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
 	};
 
+	const pullOwed = () => {
+		const b = board();
+		const currentRole = role();
+		if (!b || !currentRole) return;
+		const owed = pendingFor(b, currentRole);
+		if (owed) deliver({ ...owed, taskId: b.id });
+	};
+
 	// The leader's own advertised name, not pi.getSessionName() — an unnamed
 	// session returns undefined there, and recording the literal "leader" matches
 	// no live session, so every handoff back to the operator fails liveness.
@@ -192,14 +200,15 @@ export default function blancheExtension(pi: any): void {
 		onReady: (ready: any) => {
 			channel = ready;
 			lifecycleHandle = registerLifecycle(pi, { channel: () => channel, liveSessions }) as any;
-			// Push is best-effort: a handoff published before this channel finished
-			// negotiating was dropped, and right after spawn that is the normal case.
-			// The board is the truth, so pull whatever we still owe a turn on.
-			const b = board();
-			const currentRole = role();
-			if (!b || !currentRole) return;
-			const owed = pendingFor(b, currentRole);
-			if (owed) deliver({ ...owed, taskId: b.id });
+			// Push and a single pull are both single moments, and they can both miss:
+			// a handoff published before this channel negotiated is dropped, and a pull
+			// that runs before the sender commits sees nothing. The board is the truth,
+			// so keep asking. deliver() dedupes, so repeats are free.
+			// ponytail: 3s poll of one small JSON file. Swap for a session_joined
+			// handshake before publishing if this ever shows up in a profile.
+			pullOwed();
+			const timer = setInterval(pullOwed, 3000);
+			timer.unref?.();
 		},
 	});
 
