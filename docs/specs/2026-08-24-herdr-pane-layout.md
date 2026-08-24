@@ -11,10 +11,17 @@ horizontal stacks beside it.
 The layout is supervision-oriented:
 
 - **You · leader** remains the largest pane and keeps focus.
-- Researcher, worker, and QA share the execution stack.
-- Planner, advisor, and verifier share the review stack.
+- Planner, advisor, and verifier share the review stack, next to the leader.
+- Researcher, worker, and QA share the execution stack, furthest out.
 - Lazy roles do not consume empty placeholder panes.
 - A late advisor triggers one process-preserving reflow.
+
+Column order is **leader | review | execution**. This is not cosmetic: every
+crew column is created by splitting the leader pane, which is always a single
+full-height leaf, so each split yields a full-height sibling column with no
+subtree re-parenting and no restarted process. Review sits beside the leader
+because planning, advice, and verification are the roles the operator converses
+with most; execution runs furthest out.
 
 ## Current problem
 
@@ -33,12 +40,20 @@ The command has three structural defects:
 
 Herdr supports the required primitives:
 
-- `pane split --direction right|down --ratio ...`;
+- `pane split --direction right|down --ratio ... --no-focus` (split and move
+  accept `--no-focus`; resize does not, so resize must preserve focus itself);
 - explicit `--pane`/pane ID targets;
-- `pane move --target-pane ... --split right|down --ratio ...`;
-- `pane resize`;
-- `pane layout` with pane rectangles and split ratios;
-- `--no-focus` on mutating placement commands.
+- `pane move --target-pane <leaf> --split right|down --ratio ...`;
+- `pane resize --direction --amount`;
+- `pane layout` reporting a binary split tree of rectangles and per-split ratios.
+
+Herdr's tree splits a **leaf** pane. A review pane created beside one leaf of a
+multi-pane execution stack would span only that leaf's height, and making a
+full-height column beside an existing multi-leaf subtree would require
+re-parenting that subtree — not a supported primitive. Splitting the leader leaf
+sidesteps this entirely: the leader is always one full-height leaf, so the
+column born from it is full height by construction. This is the whole reason the
+column order is leader | review | execution.
 
 ## Chosen topology
 
@@ -48,14 +63,14 @@ kickoff. Unrelated panes elsewhere in the tab are outside this task-owned region
 When both role groups exist:
 
 ```text
-50% YOU · LEADER     30% EXECUTION       20% REVIEW
-┌───────────────────┬──────────────────┬──────────────┐
-│                   │ researcher       │ planner      │
-│                   ├──────────────────┼──────────────┤
-│                   │ worker           │ advisor      │
-│                   ├──────────────────┼──────────────┤
-│                   │ QA               │ verifier     │
-└───────────────────┴──────────────────┴──────────────┘
+50% YOU · LEADER    20% REVIEW      30% EXECUTION
+┌──────────────────┬──────────────┬──────────────────┐
+│                  │ planner      │ researcher       │
+│                  ├──────────────┼──────────────────┤
+│ YOU · LEADER     │ advisor      │ worker           │
+│                  ├──────────────┼──────────────────┤
+│                  │ verifier     │ QA               │
+└──────────────────┴──────────────┴──────────────────┘
 ```
 
 Role groups and vertical order are fixed:
@@ -71,34 +86,36 @@ heights may differ by one terminal row because of integer rounding.
 
 ### One-stack states
 
-If only execution roles exist:
+If only execution roles exist (the leader keeps the review slot's width until a
+review role appears):
 
 ```text
-70% YOU · LEADER                   30% EXECUTION
-┌────────────────────────────────┬──────────────────┐
-│                                │ researcher       │
-│                                ├──────────────────┤
-│                                │ worker           │
-│                                ├──────────────────┤
-│                                │ QA               │
-└────────────────────────────────┴──────────────────┘
+70% YOU · LEADER                  30% EXECUTION
+┌────────────────────────────────┬────────────────┐
+│                                │ researcher     │
+│ YOU · LEADER                   ├────────────────┤
+│                                │ worker         │
+│                                ├────────────────┤
+│                                │ QA             │
+└────────────────────────────────┴────────────────┘
 ```
 
 If only review roles exist:
 
 ```text
-80% YOU · LEADER                             20% REVIEW
-┌───────────────────────────────────────────┬──────────────┐
-│                                           │ planner      │
-│                                           ├──────────────┤
-│                                           │ advisor      │
-│                                           ├──────────────┤
-│                                           │ verifier     │
-└───────────────────────────────────────────┴──────────────┘
+80% YOU · LEADER                          20% REVIEW
+┌─────────────────────────────────────────┬────────┐
+│                                         │ planner│
+│ YOU · LEADER                            ├────────┤
+│                                         │ advisor│
+│                                         ├────────┤
+│                                         │verifier│
+└─────────────────────────────────────────┴────────┘
 ```
 
 The leader temporarily absorbs the absent stack's width. No shell placeholder
-is created.
+is created. When the missing stack later appears, it is birthed by splitting the
+leader, so the present stack's column and processes are untouched.
 
 ## Why this topology
 
@@ -116,11 +133,13 @@ jump whenever ownership changed.
 
 Horizontal ratios are stable:
 
-| Available groups | Leader | Execution | Review |
+Observed left-to-right order is leader | review | execution.
+
+| Available groups | Leader | Review | Execution |
 |---|---:|---:|---:|
-| both | 50% | 30% | 20% |
-| execution only | 70% | 30% | — |
-| review only | 80% | — | 20% |
+| both | 50% | 20% | 30% |
+| execution only | 70% | — | 30% |
+| review only | 80% | 20% | — |
 | no crew panes | 100% | — | — |
 
 Within each stack, spawned rows are equal height. The active owner does not
@@ -133,20 +152,28 @@ proves the resulting geometry.
 Advisor remains lazy. Before consultation there is no advisor process and no
 empty advisor pane.
 
-If a workflow initially has only an execution stack, first advisor spawn does
-this once:
+If a workflow initially has only an execution stack (hotfix and investigate are
+the only two default workflows where this happens, because advisor is their only
+review role and it is lazy), the first advisor spawn does this once:
 
-1. preserve IDs and process identities for all existing panes;
-2. create the advisor pane without stealing focus;
-3. reflow task-owned panes from 70/30 into 50/30/20;
-4. place advisor in the review stack;
-5. run the advisor command and wait for registration;
-6. persist the advisor session only after successful registration.
+1. record IDs and process identities for the leader and every execution pane;
+2. split the **leader** leaf to the right, `--no-focus`, birthing a full-height
+   review column between the leader and the execution stack;
+3. resize so the observed geometry is leader 50 / review 20 / execution 30;
+4. run the advisor command in the new review pane and wait for registration;
+5. persist the advisor session only after successful registration;
+6. re-query pane IDs and confirm every prior execution process/pane is unchanged.
+
+Step 2 is the load-bearing choice: splitting the leader leaf (never the execution
+subtree) produces a full-height review column without re-parenting, so no
+execution process is touched. The execution stack keeps its 30% column; only the
+leader's width changes, 70 -> 50.
 
 If review roles already exist, advisor is added as an equal-height row in the
 existing review stack. It does not cause a horizontal reflow.
 
-The same rules apply to any other role whose stack did not previously exist.
+The same rules apply to any other role whose stack did not previously exist: the
+new stack's column is always birthed by splitting the leader leaf.
 
 ## Placement lifecycle
 
@@ -167,7 +194,9 @@ because role groups, ordering, and ratios are deterministic.
    trigger.
 2. Partition eager roles by execution/review group, independent of config array
    order.
-3. Build the required columns within the leader's starting rectangle.
+3. Build each required column by splitting the **leader** leaf to the right
+   (`--no-focus`): review first so it lands beside the leader, then execution,
+   giving observed order leader | review | execution.
 4. Split each column downward into equal rows in canonical role order.
 5. Run each role command in its assigned pane and wait for intercom
    registration.
@@ -176,7 +205,9 @@ because role groups, ordering, and ratios are deterministic.
 
 The implementation may use split, move, and resize internally. The observable
 rectangle, role order, process identity, focus, and isolation are the contract;
-no particular binary-tree shape is public.
+no particular binary-tree shape is public. The one hard requirement the tree
+imposes is that a new full-height column is created by splitting the leader leaf,
+never by trying to re-parent an existing multi-leaf stack.
 
 ### Ordinary work
 
@@ -294,12 +325,15 @@ Required assertions:
 2. every placement command carries explicit pane IDs; split/move commands that
    support it also carry `--no-focus`, and resize preserves observed focus;
 3. role grouping and order are correct for every default workflow;
-4. both-stack geometry converges to 50/30/20 within one cell;
-5. one-stack geometry converges to 70/30 or 80/20;
+4. both-stack geometry converges to leader 50 / review 20 / execution 30 within
+   one cell, in that left-to-right order;
+5. one-stack geometry converges to 70/30 (execution) or 80/20 (review);
 6. rows in each stack differ by at most one cell;
 7. advisor absence creates no placeholder pane;
-8. late advisor produces one review-column reflow and persists only after
-   registration;
+8. late advisor into an existing review stack adds a row and issues NO leader
+   split; late advisor with no prior review stack issues exactly one leader-leaf
+   right split (CREATION) and persists only after registration — the assertion
+   distinguishes column creation from row addition;
 9. missing persisted pane IDs are respawned, never guessed;
 10. kickoff failure leaves no created panes, active task debris, or partial
     sessions;
@@ -317,10 +351,33 @@ sentinel pane.
 2. Start QUICK. Observe leader 70%, execution 30%, worker over QA at equal
    heights, and leader focus.
 3. Clean QUICK and verify task panes are gone and sentinel state is unchanged.
-4. Start FEAT. Observe leader 50%, execution 30%, review 20%; execution order
-   researcher/worker/QA and review order planner/verifier before lazy advisor.
-5. Trigger advisor. Observe advisor inserted between planner and verifier with
-   equal review rows and no process restart.
+4. Start FEAT. Observe leader 50 / review 20 / execution 30 in that order;
+   execution rows researcher/worker/QA and review rows planner/verifier before
+   lazy advisor (review stack already exists at kickoff).
+5. Trigger advisor. Observe advisor inserted between planner and verifier as an
+   equal review row, with NO leader split and no process restart (row-addition
+   path).
+
+### Real isolated journey: hotfix/investigate late-advisor column creation
+
+This is the load-bearing case verifier #7 requires, and the only path that
+creates a review column beside an existing execution stack. Run it on hotfix
+(execution = worker, QA) and, separately, investigate (execution = researcher).
+
+a. Start the workflow. Observe leader 70 / execution 30, no review column, and
+   the execution rows in canonical order; record leader and every execution
+   pane/process ID.
+b. Trigger the advisor consultation. Observe exactly one right split of the
+   **leader** leaf, `--no-focus`.
+c. Observe the resulting geometry is leader 50 / review 20 / execution 30, with
+   the review column full height beside the leader and the execution column
+   unchanged in width and full height.
+d. Re-query pane IDs: every execution pane ID and process ID from (a) is
+   unchanged; only the leader width changed and the advisor pane is new.
+e. Confirm focus never left the leader.
+f. On hotfix, the execution stack has two leaves; explicitly confirm the review
+   column spans the full height, not just one execution leaf's height — this is
+   the exact failure the leader-split avoids.
 6. Manually resize task panes. Exercise an ordinary handoff; manual geometry
    remains.
 7. Run `/crew resume`; canonical widths, row heights, and order return.
@@ -339,6 +396,9 @@ The verification must prove it discriminates the broken implementation:
 - route QA into review; role-group assertion fails;
 - remove `--no-focus`; focus assertion fails;
 - replace move/reflow with process restart; process-identity assertion fails;
+- create the late review column by splitting an execution leaf instead of the
+   leader; the full-height-column assertion (step f) fails because the column
+   spans only one execution leaf;
 - target the sentinel pane; isolation assertion fails;
 - skip cleanup of one created pane; exact post-clean pane set fails.
 
@@ -348,7 +408,8 @@ Restore every mutation byte-identically before the final verdict.
 
 A clean verdict must report:
 
-- topology exercised for QUICK, FEAT, and late advisor;
+- topology exercised for QUICK, FEAT, and hotfix/investigate late-advisor column
+  creation;
 - exact observed rectangles/ratios and row order;
 - leader focus before/after each lifecycle operation;
 - pane and process identity preservation through reflow/resume;
@@ -365,7 +426,7 @@ focus, running processes, and cleanup must be observed from real Herdr state.
 Included:
 
 - mixed right/down splits;
-- stable 50/30/20 role grid;
+- stable leader | review | execution 50/20/30 role grid;
 - equal role rows;
 - task-owned explicit pane targeting;
 - lazy-role reflow;
@@ -387,6 +448,8 @@ Explicitly excluded:
 ## Open questions
 
 None. The user selected You · leader as the largest pane, two role stacks,
-stable 50/30/20 widths, equal rows, no advisor placeholder, one late-advisor
-reflow, and repair on role spawn/resume while respecting manual resizing during
-ordinary work.
+stable widths, equal rows, no advisor placeholder, one late-advisor reflow, and
+repair on role spawn/resume while respecting manual resizing during ordinary
+work. Column order is leader | review | execution (50/20/30) because a full-height
+column is only achievable by splitting the leader leaf, not by re-parenting an
+existing execution stack.
