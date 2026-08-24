@@ -22,9 +22,7 @@ export function createCrewWidget(
 		timer: Timer | undefined,
 		transitionTimer: Timer | undefined,
 		frame = 0,
-		previous = "",
 		disposed = false,
-		handoffId: string | undefined,
 		transitionActive = false;
 	const glyph =
 		opts.glyphs === "ascii"
@@ -101,7 +99,6 @@ export function createCrewWidget(
 		if (should && !timer && opts.clock) {
 			timer = opts.clock.setInterval(() => {
 				frame++;
-				previous = "";
 				opts.tui.requestRender();
 			}, 160);
 			timer.unref?.();
@@ -126,14 +123,10 @@ export function createCrewWidget(
 				const old = snap.board.history.at(-1)?.handoffId;
 				snap = next;
 				if (next.board.history.at(-1)?.handoffId !== old) {
-					previous = "HANDOFF";
 					transitionActive = true;
-					handoffId = next.board.history.at(-1)?.handoffId;
 					if (opts.clock?.setTimeout)
 						transitionTimer = opts.clock.setTimeout(() => {
-							previous = "";
 							transitionActive = false;
-							handoffId = undefined;
 						}, 1500);
 				}
 			}
