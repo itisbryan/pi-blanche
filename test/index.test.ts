@@ -335,6 +335,30 @@ test("crew widget is hidden from bystanders and shown to participants", async ()
 	}
 });
 
+test("stale UI context cannot escape the widget refresh path", async () => {
+	const h = harness("stale-context");
+	const setWidgetCalls: unknown[] = [];
+	const stale: any = {};
+	Object.defineProperty(stale, "ui", {
+		get() {
+			throw new Error("stale ctx");
+		},
+	});
+	const unhandled: unknown[] = [];
+	const onUnhandled = (reason: unknown) => unhandled.push(reason);
+	process.on("unhandledRejection", onUnhandled);
+	try {
+		blancheExtension(h.pi);
+		const sessionStart = h.handlers.get("session_start");
+		assert.ok(sessionStart, "extension must register session_start");
+		await assert.doesNotReject(() => sessionStart?.({}, stale) as Promise<unknown>);
+	} finally {
+		process.off("unhandledRejection", onUnhandled);
+	}
+	assert.deepEqual(unhandled, [], "stale refresh must not escape as an unhandled rejection");
+	assert.equal(setWidgetCalls.length, 0);
+});
+
 test("kickoff refuses an active same-cwd crew without creating anything, then allows stop and clean recovery", async () => {
 	const oldTask = process.env.BLANCHE_TASK;
 	const oldRole = process.env.BLANCHE_ROLE;
