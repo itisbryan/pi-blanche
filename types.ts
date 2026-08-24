@@ -86,6 +86,10 @@ export interface HandoffRecord {
 	spec?: string;
 	phase: string;
 	verdict: Verdict | null;
+	/** Persisted so an undelivered handoff can be replayed from the board.
+	 *  Live in the publish only, it would be lost whenever the receiver's channel
+	 *  was not yet subscribed — which is the normal case right after spawn. */
+	message?: string;
 	sentAt: number;
 	ackedAt?: number;
 }

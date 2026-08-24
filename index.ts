@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createTask, currentRole, currentTaskId, readBoard, taskDir, updateBoard } from "./board.ts";
 import { loadConfig, resolveCrew } from "./config.ts";
-import { decideHandoff } from "./handoff.ts";
+import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
 import { registerLifecycle } from "./lifecycle.ts";
 import { spawnRole } from "./spawn.ts";
@@ -92,6 +92,31 @@ export default function blancheExtension(pi: any): void {
 	const liveSessions = async (): Promise<string[]> =>
 		channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
 
+	const deliver = (payload: any) => {
+		const currentTask = taskId();
+		const currentRole = role();
+		if (
+			!currentTask ||
+			!currentRole ||
+			!shouldDeliver({
+				payload,
+				myTaskId: currentTask,
+				myRole: currentRole,
+				seenHandoffIds: [...seenHandoffIds],
+			})
+		)
+			return;
+		seenHandoffIds.add(payload.handoffId);
+		const currentBoard = board();
+		if (currentBoard) {
+			updateBoard(currentBoard.id, (fresh) => {
+				const entry = fresh.history.find((h) => h.handoffId === payload.handoffId);
+				if (entry) entry.ackedAt = Date.now();
+			});
+		}
+		pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
+	};
+
 	// The leader's own advertised name, not pi.getSessionName() — an unnamed
 	// session returns undefined there, and recording the literal "leader" matches
 	// no live session, so every handoff back to the operator fails liveness.
@@ -162,33 +187,19 @@ export default function blancheExtension(pi: any): void {
 		ownerEligible: true,
 		onEvent: (event: any) => {
 			if (event.type !== "message" || !event.payload) return;
-			const currentTask = taskId();
-			const currentRole = role();
-			const payload = event.payload;
-			if (
-				!currentTask ||
-				!currentRole ||
-				!shouldDeliver({
-					payload,
-					myTaskId: currentTask,
-					myRole: currentRole,
-					seenHandoffIds: [...seenHandoffIds],
-				})
-			)
-				return;
-			seenHandoffIds.add(payload.handoffId);
-			const currentBoard = board();
-			if (currentBoard) {
-				updateBoard(currentBoard.id, (fresh) => {
-					const entry = fresh.history.find((h) => h.handoffId === payload.handoffId);
-					if (entry) entry.ackedAt = Date.now();
-				});
-			}
-			pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
+			deliver(event.payload);
 		},
 		onReady: (ready: any) => {
 			channel = ready;
 			lifecycleHandle = registerLifecycle(pi, { channel: () => channel, liveSessions }) as any;
+			// Push is best-effort: a handoff published before this channel finished
+			// negotiating was dropped, and right after spawn that is the normal case.
+			// The board is the truth, so pull whatever we still owe a turn on.
+			const b = board();
+			const currentRole = role();
+			if (!b || !currentRole) return;
+			const owed = pendingFor(b, currentRole);
+			if (owed) deliver({ ...owed, taskId: b.id });
 		},
 	});
 
@@ -236,7 +247,15 @@ export default function blancheExtension(pi: any): void {
 			const [workflow, description] = [match[1], match[2]];
 			const crew = resolveCrew(loadConfig(), workflow);
 			const id = `${workflow}-${Date.now().toString(36)}`;
-			const leaderName = (await selfName()) ?? pi.getSessionName?.();
+			// Label this session to match the crew convention, so it is identifiable
+			// in the roster instead of showing up as subagent-chat-<uuid>.
+			let leaderName: string | undefined;
+			if (pi.setSessionName) {
+				leaderName = `${crew.prefix}-${id}-leader`;
+				pi.setSessionName(leaderName);
+			} else {
+				leaderName = (await selfName()) ?? pi.getSessionName?.();
+			}
 			if (!leaderName)
 				throw new Error(
 					"This session is not on the intercom roster, so the crew could never hand work back to you. " +

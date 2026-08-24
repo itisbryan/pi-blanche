@@ -1,4 +1,4 @@
-import type { Board, HandoffDecision, HandoffInput, Role } from "./types.js";
+import type { Board, HandoffDecision, HandoffInput, HandoffRecord, Role } from "./types.js";
 export function decideHandoff(input: HandoffInput): HandoffDecision {
 	const { board, from, to } = input;
 	const target = to === "leader" ? board.leader.sessionName : board.sessions[to]?.sessionName;
@@ -37,7 +37,15 @@ export function decideHandoff(input: HandoffInput): HandoffDecision {
 		spec: input.spec,
 		phase: input.phase,
 		verdict: input.verdict ?? null,
+		...((input as { message?: string }).message ? { message: (input as { message?: string }).message } : {}),
 		sentAt: input.now,
 	});
 	return { ok: true, board: next, notes, target };
+}
+
+/** The handoff a role still owes a turn on: latest addressed to it, never acked.
+ *  Push delivery is best-effort — a publish that lands before the receiver's
+ *  channel is subscribed is dropped — so the receiver pulls this on connect. */
+export function pendingFor(board: Board, role: Role): HandoffRecord | undefined {
+	return [...board.history].reverse().find((h) => h.to === role && !h.ackedAt);
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decideHandoff } from "../handoff.ts";
+import { decideHandoff, pendingFor } from "../handoff.ts";
 
 const phases = [
 	{ name: "IMPLEMENTING", owner: "worker" },
@@ -246,4 +246,36 @@ test("a missing checkpoint warns but does not block", () => {
 			r.notes.some((n) => /no checkpoint/i.test(n)),
 			true,
 		);
+});
+
+test("pendingFor returns the latest unacked handoff for a role, and nothing once acked", () => {
+	const b = mkBoard({
+		history: [
+			{
+				handoffId: "h1",
+				from: "leader",
+				to: "worker",
+				phase: "IMPLEMENTING",
+				verdict: null,
+				sentAt: 1,
+				ackedAt: 2,
+			},
+			{
+				handoffId: "h2",
+				from: "qa",
+				to: "worker",
+				phase: "IMPLEMENTING",
+				verdict: "FAIL",
+				message: "3 tests fail",
+				sentAt: 3,
+			},
+			{ handoffId: "h3", from: "worker", to: "qa", phase: "QA", verdict: null, sentAt: 4 },
+		],
+	});
+	const owed = pendingFor(b, "worker" as any);
+	assert.equal(owed?.handoffId, "h2", "skips the acked one");
+	assert.equal(owed?.message, "3 tests fail", "message is replayable from the board");
+	assert.equal(pendingFor(b, "verifier" as any), undefined, "no work owed");
+	b.history[1].ackedAt = 5;
+	assert.equal(pendingFor(b, "worker" as any), undefined, "silent once acked");
 });
