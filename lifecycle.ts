@@ -5,6 +5,7 @@ import { Type } from "typebox";
 import {
 	currentRole,
 	currentTaskId,
+	requireTaskId,
 	listTasks,
 	readBoard,
 	taskDir,
@@ -72,7 +73,7 @@ export function registerLifecycle(
 			return b;
 		}
 		if (action === "stop") {
-			const b = readBoard(idArg ?? currentTaskId()!);
+			const b = readBoard(idArg ?? requireTaskId());
 			if (b.status !== "stopped")
 				return updateBoard(b.id, (x) => {
 					x.status = "stopped";
@@ -80,7 +81,7 @@ export function registerLifecycle(
 			return b;
 		}
 		if (action === "clean") {
-			const id = idArg ?? currentTaskId();
+			const id = idArg ?? requireTaskId();
 			if (!id) throw Error("Task id is required");
 			const b = readBoard(id);
 			for (const s of Object.values(b.sessions)) if (s?.paneId) await closePane(s.paneId);
@@ -93,22 +94,50 @@ export function registerLifecycle(
 		name: "checkpoint",
 		description: "Persist a crew checkpoint.",
 		parameters: Type.Object({
-			completed: Type.Optional(Type.Array(Type.String())),
-			decisions: Type.Optional(Type.Array(Type.String())),
+			completed: Type.Optional(
+				Type.Array(Type.String(), { description: "Work completed since the last checkpoint." }),
+			),
+			decisions: Type.Optional(
+				Type.Array(Type.String(), { description: "Decisions made and their rationale." }),
+			),
 			failedApproaches: Type.Optional(
 				Type.Array(
-					Type.Object({ approach: Type.String(), result: Type.String(), whyItFailed: Type.String() }),
+					Type.Object({
+						approach: Type.String({ description: "An approach already tried." }),
+						result: Type.String({ description: "What happened when it was tried." }),
+						whyItFailed: Type.String({
+							description: "Why the approach failed; prevents rediscovering dead ends.",
+						}),
+					}),
+					{
+						description:
+							"An approach already tried, what happened, and why it failed; the highest-value field for future contexts.",
+					},
 				),
 			),
-			currentFailures: Type.Optional(Type.Array(Type.String())),
-			validation: Type.Optional(Type.Array(Type.String())),
-			filesChanged: Type.Optional(Type.Array(Type.String())),
-			remaining: Type.Optional(Type.Array(Type.String())),
-			nextAction: Type.Optional(Type.String()),
+			currentFailures: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"What is failing right now, verbatim; distinguishes unattempted from attempted and broken.",
+				}),
+			),
+			validation: Type.Optional(
+				Type.Array(Type.String(), {
+					description:
+						"What has actually been proven, such as a targeted spec passing while the full suite was not run.",
+				}),
+			),
+			filesChanged: Type.Optional(
+				Type.Array(Type.String(), { description: "Files changed during this work." }),
+			),
+			remaining: Type.Optional(Type.Array(Type.String(), { description: "Work that remains to be done." })),
+			nextAction: Type.Optional(
+				Type.String({ description: "The next concrete action for the continuing agent." }),
+			),
 		}),
 		execute: async (_id: string, input: CheckpointInput) => {
 			const role = currentRole(),
-				b = readBoard(currentTaskId()!);
+				b = readBoard(requireTaskId());
 			let path = "";
 			updateBoard(b.id, (x) => {
 				path = writeCheckpoint(x, role, x.currentSpec, x.sessions[role]?.contextEpoch ?? 0, input);
@@ -122,22 +151,19 @@ export function registerLifecycle(
 		name: "consult",
 		description: "Record a consultation conclusion.",
 		parameters: Type.Object({
-			role: StringEnum(["researcher", "advisor"] as const),
-			requestedBy: StringEnum([
-				"leader",
-				"planner",
-				"researcher",
-				"advisor",
-				"worker",
-				"qa",
-				"verifier",
-			] as const),
+			role: StringEnum(["researcher", "advisor"] as const, {
+				description: "The role providing the consultation conclusion.",
+			}),
+			requestedBy: StringEnum(
+				["leader", "planner", "researcher", "advisor", "worker", "qa", "verifier"] as const,
+				{ description: "The role that requested this conclusion." },
+			),
 			answer: Type.String({ description: "The distilled conclusion; empty is rejected." }),
-			spec: Type.Optional(Type.String()),
+			spec: Type.Optional(Type.String({ description: "The spec this conclusion addresses, if any." })),
 		}),
 		execute: async (_id: string, input: any) => {
 			if (!input.answer?.trim()) throw Error("Consultation answer must not be empty");
-			const b = readBoard(currentTaskId()!);
+			const b = readBoard(requireTaskId());
 			if (input.role !== "researcher" && input.role !== "advisor")
 				throw Error("Consult role must be researcher or advisor");
 			const id = crypto.randomUUID();

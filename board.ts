@@ -39,12 +39,16 @@ export const currentTaskId = (cwd = process.cwd(), sessionName?: string): string
 	const named = taskIdFromSessionName(sessionName);
 	if (named && existsSync(join(taskDir(named), "board.json"))) return named;
 	const candidates = listTasks(cwd);
-	if (candidates.length > 1) {
-		throw new Error(
-			`Multiple tasks in this directory: ${candidates.map((task) => task.id).join(", ")}. Pass one explicitly: /crew <action> <id>.`,
-		);
-	}
-	return candidates[0]?.id;
+	return candidates.length === 1 ? candidates[0]?.id : undefined;
+};
+export const requireTaskId = (cwd = process.cwd(), sessionName?: string): string => {
+	const id = currentTaskId(cwd, sessionName);
+	if (id) return id;
+	const candidates = listTasks(cwd);
+	if (!candidates.length) throw new Error("No Blanche task found; pass one explicitly: /crew <action> <id>.");
+	throw new Error(
+		`Multiple tasks in this directory: ${candidates.map((task) => task.id).join(", ")}. Pass one explicitly: /crew <action> <id>.`,
+	);
 };
 
 export function taskDir(id: string) {
