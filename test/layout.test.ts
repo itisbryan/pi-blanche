@@ -150,10 +150,10 @@ test("selects stable leader/review/execution widths for both-stack and one-stack
 	});
 });
 
-test("uses non-flat 1/k ratios to build equal three-row stacks", () => {
+test("uses target-keeps ratios to build equal three-row stacks", () => {
 	assert.deepEqual(layout.rowSplitRatios(1), []);
 	assert.deepEqual(layout.rowSplitRatios(2), [0.5]);
-	assert.deepEqual(layout.rowSplitRatios(3), [1 / 3, 1 / 2]);
+	assert.deepEqual(layout.rowSplitRatios(3), [2 / 3, 1 / 2]);
 	assert.notDeepEqual(layout.rowSplitRatios(3), [0.5, 0.5]);
 });
 
