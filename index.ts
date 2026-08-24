@@ -66,17 +66,14 @@ export function buildCrewWidget(
 		const session = board.sessions[member];
 		const live = session?.sessionName ? liveByName.get(session.sessionName) : undefined;
 		const marker = board.owner === member ? "▸ " : "  ";
-		const name = session?.sessionName ?? "—";
 		const state = session ? (live ? "live" : "offline") : "not spawned";
 		const epoch = session ? `e${session.contextEpoch}` : "";
 		const context = live?.contextPct === undefined ? "" : ` ${Math.round(live.contextPct)}%`;
-		lines.push(
-			`${marker}${member.padEnd(12)} ${name.padEnd(24)} ${state.padEnd(12)} ${epoch}${context}`.trimEnd(),
-		);
+		lines.push(`${marker}${member.padEnd(12)} ${state.padEnd(12)} ${epoch}${context}`.trimEnd());
 	}
 	const leaderLive = board.leader.sessionName ? liveByName.get(board.leader.sessionName) : undefined;
 	lines.push(
-		`${board.owner === "leader" ? "▸ " : "  "}leader       ${board.leader.sessionName.padEnd(24)} ${leaderLive ? "live" : "offline"}`.trimEnd(),
+		`${board.owner === "leader" ? "▸ " : "  "}leader       ${leaderLive ? "live" : "offline"}`.trimEnd(),
 	);
 	return lines;
 }
@@ -213,7 +210,15 @@ export default function blancheExtension(pi: any): void {
 		pi.sendMessage?.(
 			{
 				customType: "blanche_handoff",
-				content: [payload.message ?? `Handoff for ${payload.phase}`, ...(payload.notes ?? [])].join("\n"),
+				content: [
+					payload.message ?? `Handoff for ${payload.phase}`,
+					...(payload.notes ?? []),
+					...(payload.to === "advisor"
+						? [
+								"ACTION REQUIRED: call consult now with role advisor/requestedBy worker, then handoff your advice back to the worker.",
+							]
+						: []),
+				].join("\n"),
 				display: true,
 				details: payload,
 			},
