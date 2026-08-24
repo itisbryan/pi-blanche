@@ -1,6 +1,11 @@
 import type { Board, HandoffDecision, HandoffInput, HandoffRecord, Role } from "./types.js";
 export function decideHandoff(input: HandoffInput): HandoffDecision {
 	const { board, from, to } = input;
+	if (from === to)
+		return {
+			ok: false,
+			error: `Cannot hand off '${from}' to itself${from === "leader" ? "; ask the user for the missing input instead" : ""}`,
+		};
 	const target = to === "leader" ? board.leader.sessionName : board.sessions[to]?.sessionName;
 	if (to !== "leader" && !board.resolved.roster.includes(to as Role))
 		return { ok: false, error: `Role '${to}' is not in roster: ${board.resolved.roster.join(", ")}` };
