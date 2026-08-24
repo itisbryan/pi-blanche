@@ -53,9 +53,15 @@ export function buildCrewWidget(
 	board: Board,
 	liveRoster: Array<{ name?: string; contextPct?: number }>,
 ): string[] {
-	const liveByName = new Map(liveRoster.filter((session) => session.name).map((session) => [session.name, session]));
-	const currentRework = board.currentSpec ? board.specs[board.currentSpec]?.reworkRound ?? 0 : board.reworkRound;
-	const lines = [`blanche · ${board.id} · ${board.phase} · rework ${currentRework}/${board.resolved.maxRework}`];
+	const liveByName = new Map(
+		liveRoster.filter((session) => session.name).map((session) => [session.name, session]),
+	);
+	const currentRework = board.currentSpec
+		? (board.specs[board.currentSpec]?.reworkRound ?? 0)
+		: board.reworkRound;
+	const lines = [
+		`blanche · ${board.id} · ${board.phase} · rework ${currentRework}/${board.resolved.maxRework}`,
+	];
 	for (const member of board.resolved.roster) {
 		const session = board.sessions[member];
 		const live = session?.sessionName ? liveByName.get(session.sessionName) : undefined;
@@ -64,10 +70,14 @@ export function buildCrewWidget(
 		const state = session ? (live ? "live" : "offline") : "not spawned";
 		const epoch = session ? `e${session.contextEpoch}` : "";
 		const context = live?.contextPct === undefined ? "" : ` ${Math.round(live.contextPct)}%`;
-		lines.push(`${marker}${member.padEnd(12)} ${name.padEnd(24)} ${state.padEnd(12)} ${epoch}${context}`.trimEnd());
+		lines.push(
+			`${marker}${member.padEnd(12)} ${name.padEnd(24)} ${state.padEnd(12)} ${epoch}${context}`.trimEnd(),
+		);
 	}
 	const leaderLive = board.leader.sessionName ? liveByName.get(board.leader.sessionName) : undefined;
-	lines.push(`${board.owner === "leader" ? "▸ " : "  "}leader       ${board.leader.sessionName.padEnd(24)} ${leaderLive ? "live" : "offline"}`.trimEnd());
+	lines.push(
+		`${board.owner === "leader" ? "▸ " : "  "}leader       ${board.leader.sessionName.padEnd(24)} ${leaderLive ? "live" : "offline"}`.trimEnd(),
+	);
 	return lines;
 }
 
