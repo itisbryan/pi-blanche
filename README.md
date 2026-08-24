@@ -141,6 +141,13 @@ that seam.
 Deferred by design: parallel workers (`maxWorkers: 1`), enforcing the workflow
 beyond the rework bound, owning compaction, worktrees.
 
+## Design
+
+[`docs/architecture.md`](docs/architecture.md) — the L-Thread model (durable
+tasks over disposable contexts), why compaction is deliberately not owned, the
+crew coordination protocol, concurrency invariants, and a verification status
+including three defects that reached a fully green test suite.
+
 ## License
 
 MIT
