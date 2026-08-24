@@ -134,11 +134,19 @@ no assertion — a passing no-op test is a green light on nothing.
 
 ## Status
 
-All four build specs are implemented and reviewed; 51 tests green. **A live
-`/crew` kickoff against real herdr panes has not been run yet** — the suite plus
-a stub-herdr harness (`test/fake-herdr.sh`) cover everything up to real pane
-creation and a spawned pi registering on the broker. Treat it as unproven at
-that seam.
+All four build specs are implemented and reviewed; 52 tests green, plus lint and
+typecheck in CI.
+
+**A live `/crew` kickoff passes end to end.** Real herdr panes, both agents
+registered on the broker, the opening handoff delivered and acknowledged without
+intervention, and the receiving agent ran a real turn. Getting there took four
+defects that no test could see, all in the seam between the extension and its
+host — [`docs/verification.md` §7.4](docs/verification.md#74-live-verification)
+records them.
+
+Not yet run live: a full multi-role cycle (worker → qa → verifier with a rework
+loop and an advisor escalation). Only the opening handoff of a two-role
+`investigate` has.
 
 Deferred by design: parallel workers (`maxWorkers: 1`), enforcing the workflow
 beyond the rework bound, owning compaction, worktrees.
