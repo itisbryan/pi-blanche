@@ -67,6 +67,7 @@ export async function spawnRole(input: {
 	let id = input.paneId;
 	if (!id) {
 		const target = input.splitTargetPaneId;
+		if (target && input.splitRatio === undefined) throw new Error("Missing planned split ratio.");
 		const splitArgs = target
 			? [
 					"pane",
@@ -76,7 +77,7 @@ export async function spawnRole(input: {
 					"--direction",
 					input.splitDirection ?? "down",
 					"--ratio",
-					String(input.splitRatio ?? 100),
+					String(input.splitRatio),
 					"--no-focus",
 				]
 			: ["pane", "split", "--current", "--direction", "right", "--cwd", input.cwd];

@@ -16,7 +16,7 @@ import {
 import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
-import { partitionRoles, planKickoff } from "./layout.ts";
+import { partitionRoles, planKickoff, planRows } from "./layout.ts";
 import { registerLifecycle } from "./lifecycle.ts";
 import { extractPaneId, runHerdr, spawnRole } from "./spawn.ts";
 import type { Board, HandoffDecision, Role } from "./types.ts";
@@ -512,7 +512,8 @@ export default function blancheExtension(pi: any): void {
 					executionRoles: groups.execution,
 				});
 				const columns: string[] = [];
-				for (const command of plan.commands) {
+				const columnCommandCount = (groups.review.length ? 1 : 0) + (groups.execution.length ? 1 : 0);
+				for (const command of plan.commands.slice(0, columnCommandCount)) {
 					const result = await runHerdr(command);
 					const pane = extractPaneId(result);
 					if (!pane) throw new Error("Layout plan created no pane id.");
@@ -520,26 +521,39 @@ export default function blancheExtension(pi: any): void {
 					openedPanes.push(pane);
 				}
 				const rolePane = new Map<Role, string>();
-				if (groups.review.length && columns[0])
-					for (const role of groups.review) rolePane.set(role, columns[0]);
-				if (groups.execution.length && columns[groups.review.length ? 1 : 0])
-					for (const role of groups.execution) rolePane.set(role, columns[groups.review.length ? 1 : 0]);
+				const executionColumn = groups.execution.length ? columns[0] : undefined;
+				const reviewColumn = groups.review.length ? columns[groups.execution.length ? 1 : 0] : undefined;
+				if (reviewColumn) for (const role of groups.review) rolePane.set(role, reviewColumn);
+				if (executionColumn) for (const role of groups.execution) rolePane.set(role, executionColumn);
 				const usedColumns = new Set<string>();
+				const rowIndexes = new Map<string, number>();
 				for (const member of crew.roster) {
 					if (!eagerRoles.has(member)) continue;
-					const targetPane = rolePane.get(member) ?? leaderPaneId;
-					const firstInColumn = !usedColumns.has(targetPane);
+					const targetPane = groups.execution.includes(member)
+						? (executionColumn ?? leaderPaneId)
+						: groups.review.includes(member)
+							? (reviewColumn ?? leaderPaneId)
+							: leaderPaneId;
+					const stackKey = groups.execution.includes(member) ? "execution" : "review";
+					const firstInColumn = !usedColumns.has(stackKey);
+					const rowIndex = rowIndexes.get(stackKey) ?? 0;
+					const columnRoles = groups.execution.includes(member) ? groups.execution : groups.review;
+					const rowCommand = firstInColumn ? undefined : planRows(targetPane, columnRoles)[rowIndex - 1];
+					if (!firstInColumn && !rowCommand) throw new Error(`Missing planned row split for ${member}.`);
+					const result = rowCommand ? await runHerdr(rowCommand) : undefined;
+					const plannedPane = result ? extractPaneId(result) : undefined;
+					if (rowCommand && !plannedPane)
+						throw new Error(`Planned row split returned no pane for ${member}.`);
 					const launched = await spawnRole({
 						role: member,
 						board: created,
 						profile: crew.agents[member],
 						cwd: process.cwd(),
 						liveSessions,
-						...(firstInColumn
-							? { paneId: targetPane }
-							: { splitTargetPaneId: targetPane, splitDirection: "down", splitRatio: 0.5 }),
+						...(plannedPane ? { paneId: plannedPane } : { paneId: targetPane }),
 					});
-					usedColumns.add(targetPane);
+					rowIndexes.set(stackKey, rowIndex + 1);
+					usedColumns.add(stackKey);
 					rolePane.set(member, launched.paneId);
 					if (!openedPanes.includes(launched.paneId)) openedPanes.push(launched.paneId);
 					created.sessions[member] = {
