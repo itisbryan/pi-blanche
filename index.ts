@@ -366,10 +366,16 @@ export default function blancheExtension(pi: any): void {
 		return (await channel.listSessions()).find((s: any) => s.id === id)?.name;
 	};
 
-	pi.on("before_agent_start", async () => {
+	pi.on("before_agent_start", async (event: any = {}) => {
 		const currentRole = role();
 		const currentBoard = board();
-		if (!currentRole || !currentBoard) return;
+		if (!currentBoard) return;
+		const name = sessionName();
+		const participant =
+			!!process.env.BLANCHE_ROLE ||
+			name === currentBoard.leader.sessionName ||
+			Object.values(currentBoard.sessions).some((session) => session?.sessionName === name);
+		if (!participant || !currentRole) return;
 		const state = currentBoard.sessions[currentRole];
 		const rolePrompt = readFileSync(resolve(import.meta.dirname, "roles", `${currentRole}.md`), "utf8");
 		const specBody =
@@ -392,21 +398,20 @@ export default function blancheExtension(pi: any): void {
 				? (await channel.listSessions()).find((session: any) => session.name === state.sessionName)
 				: undefined;
 		const softLimit = loadConfig().context.softLimit;
-		return {
-			systemPrompt: buildCrewBlock({
-				role: currentRole,
-				board: currentBoard,
-				softLimit,
-				contextPct: contextSession?.contextPct,
-				specBody,
-				checkpoint,
-				consultation: consultationBody,
-				peers: Object.values(currentBoard.sessions)
-					.map((s) => s?.sessionName)
-					.filter(Boolean) as string[],
-				rolePrompt,
-			}),
-		};
+		const crewBlock = buildCrewBlock({
+			role: currentRole,
+			board: currentBoard,
+			softLimit,
+			contextPct: contextSession?.contextPct,
+			specBody,
+			checkpoint,
+			consultation: consultationBody,
+			peers: Object.values(currentBoard.sessions)
+				.map((s) => s?.sessionName)
+				.filter(Boolean) as string[],
+			rolePrompt,
+		});
+		return { systemPrompt: `${event.systemPrompt ?? ""}\n\n${crewBlock}` };
 	});
 	pi.on("session_compact", () => {
 		const currentRole = role();
