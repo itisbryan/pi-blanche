@@ -188,8 +188,13 @@ test("operator kickoff records exactly one opening handoff for every workflow", 
 			const role = expectedEager.has("researcher") ? "researcher" : opening.owner;
 			process.env.BLANCHE_TASK = id;
 			process.env.BLANCHE_ROLE = role;
-			const prompt = await h.handlers.get("before_agent_start")?.();
+			const existingSystemPrompt = `claude-bridge capture sentinel ${workflow}`;
+			const prompt = await h.handlers.get("before_agent_start")?.({ systemPrompt: existingSystemPrompt });
 			const systemPrompt = (prompt as { systemPrompt?: string } | undefined)?.systemPrompt ?? "";
+			assert.ok(
+				systemPrompt.includes(existingSystemPrompt),
+				`${workflow} must wrap the existing system prompt`,
+			);
 			for (const session of Object.values(board.sessions)) {
 				if (session?.sessionName) assert.match(systemPrompt, new RegExp(session.sessionName));
 			}
@@ -202,6 +207,34 @@ test("operator kickoff records exactly one opening handoff for every workflow", 
 		process.chdir(originalCwd);
 		restoreEnv("BLANCHE_TASK", oldTask);
 		restoreEnv("BLANCHE_ROLE", oldRole);
+	}
+});
+
+test("does not inject a crew prompt into a non-participant session", async () => {
+	const oldCwd = process.cwd();
+	const cwd = mkdtempSync(join(tmpdir(), "blanche-prompt-bystander-"));
+	const id = "prompt-bystander";
+	process.chdir(cwd);
+	createTask({
+		id,
+		workflow: "e2e",
+		title: id,
+		description: "participant gate test",
+		cwd,
+		resolved: resolved("worker"),
+		prefix: "e2e",
+		phase: "IMPLEMENTING",
+		owner: "worker",
+		leader: { sessionName: "participant-leader" },
+	});
+	try {
+		const h = harness("unrelated-bystander");
+		blancheExtension(h.pi);
+		const prompt = await h.handlers.get("before_agent_start")?.({ systemPrompt: "existing prompt" });
+		assert.equal(prompt, undefined);
+	} finally {
+		process.chdir(oldCwd);
+		rmSync(taskDir(id), { recursive: true, force: true });
 	}
 });
 

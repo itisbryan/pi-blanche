@@ -230,6 +230,27 @@ test("renders the six-role crew in one connected ten-line frame at width 100", (
 	for (const role of roles) assert.match(stripAnsi(lines.join("\n")), new RegExp(role, "i"));
 });
 
+test("closes every frame rail at widths 40, 60, and 100", () => {
+	for (const width of [40, 60, 100]) {
+		const lines = mount(snapshot()).component.render(width).map(stripAnsi);
+		assert.equal(lines.length, 10);
+		assert.equal(lines[0][0], "╭");
+		assert.equal(lines[0].at(-1), "╮");
+		assert.equal(lines[1][0], "├");
+		assert.equal(lines[1].at(-1), "┤");
+		assert.ok(lines[0].includes("─"));
+		assert.ok(lines[1].includes("─"));
+		for (const line of lines) assert.equal(visibleWidth(line), width);
+		for (const line of lines.slice(2, -1)) {
+			assert.equal(line[0], "│");
+			assert.equal(line.at(-1), "│");
+		}
+		assert.equal(lines.at(-1)?.[0], "╰");
+		assert.equal(lines.at(-1)?.at(-1), "╯");
+		assert.ok(lines.at(-1)?.includes("─"));
+	}
+});
+
 test("keeps a two-role roster and the six-role roster visible at 60 and 40", () => {
 	const compact = snapshot({
 		phase: "IMPLEMENTING",
