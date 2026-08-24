@@ -6,7 +6,7 @@ type Snapshot = {
 	liveRoster: { name?: string; contextPct?: number }[];
 };
 type Theme = Record<string, (s: string) => string>;
-type Timer = { unref?: () => void };
+type Timer = any;
 type Clock = {
 	setInterval: (f: () => void, n: number) => Timer;
 	clearInterval: (t: Timer) => void;
@@ -28,6 +28,12 @@ export function createCrewWidget(
 		opts.glyphs === "ascii"
 			? { tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", dot: "o", arrow: ">" }
 			: { tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", dot: "●", arrow: "▶" };
+	const clock: Clock = opts.clock ?? {
+		setInterval: (f, n) => setInterval(f, n),
+		clearInterval: (t) => clearInterval(t as ReturnType<typeof setInterval>),
+		setTimeout: (f, n) => setTimeout(f, n),
+		clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
+	};
 	const color = (name: string, s: string) => opts.theme()[name]?.(s) ?? s;
 	const fit = (s: string, w: number) => {
 		const raw = s.replace(new RegExp("\\x1b\\[[0-?]*[ -/]*[@-~]", "g"), "");
@@ -105,15 +111,15 @@ export function createCrewWidget(
 	};
 	const ensureTimer = () => {
 		const should = active();
-		if (should && !timer && opts.clock) {
-			timer = opts.clock.setInterval(() => {
+		if (should && !timer) {
+			timer = clock.setInterval(() => {
 				frame++;
 				opts.tui.requestRender();
 			}, 160);
 			timer.unref?.();
 		}
-		if (!should && timer && opts.clock) {
-			opts.clock.clearInterval(timer);
+		if (!should && timer) {
+			clock.clearInterval(timer);
 			timer = undefined;
 		}
 	};
@@ -133,9 +139,9 @@ export function createCrewWidget(
 				snap = next;
 				if (next.board.history.at(-1)?.handoffId !== old) {
 					transitionActive = true;
-					if (transitionTimer && opts.clock?.clearTimeout) opts.clock.clearTimeout(transitionTimer);
-					if (opts.clock?.setTimeout)
-						transitionTimer = opts.clock.setTimeout(() => {
+					if (transitionTimer) clock.clearTimeout?.(transitionTimer);
+					if (clock.setTimeout)
+						transitionTimer = clock.setTimeout(() => {
 							transitionActive = false;
 						}, 1500);
 				}
@@ -143,8 +149,8 @@ export function createCrewWidget(
 			ensureTimer();
 		},
 		dispose() {
-			if (timer && opts.clock) opts.clock.clearInterval(timer);
-			if (transitionTimer && opts.clock?.clearTimeout) opts.clock.clearTimeout(transitionTimer);
+			if (timer && clock) clock.clearInterval(timer);
+			if (transitionTimer) clock.clearTimeout?.(transitionTimer);
 			timer = undefined;
 			transitionTimer = undefined;
 		},
