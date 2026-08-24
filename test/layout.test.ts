@@ -16,6 +16,7 @@ type LayoutContract = {
 		review?: number;
 		execution?: number;
 	};
+	rowSplitRatios(count: number): number[];
 	parsePaneLayout(raw: unknown): unknown;
 	measureColumns(
 		layout: unknown,
@@ -52,6 +53,7 @@ const layout: LayoutContract =
 	({
 		partitionRoles: () => missingLayout("partitionRoles"),
 		desiredColumns: () => missingLayout("desiredColumns"),
+		rowSplitRatios: () => missingLayout("rowSplitRatios"),
 		parsePaneLayout: () => missingLayout("parsePaneLayout"),
 		measureColumns: () => missingLayout("measureColumns"),
 		assertEqualRows: () => missingLayout("assertEqualRows"),
@@ -146,6 +148,13 @@ test("selects stable leader/review/execution widths for both-stack and one-stack
 		leader: 80,
 		review: 20,
 	});
+});
+
+test("uses non-flat 1/k ratios to build equal three-row stacks", () => {
+	assert.deepEqual(layout.rowSplitRatios(1), []);
+	assert.deepEqual(layout.rowSplitRatios(2), [0.5]);
+	assert.deepEqual(layout.rowSplitRatios(3), [1 / 3, 1 / 2]);
+	assert.notDeepEqual(layout.rowSplitRatios(3), [0.5, 0.5]);
 });
 
 test("measures parsed Herdr rectangles in leader | review | execution order", () => {
