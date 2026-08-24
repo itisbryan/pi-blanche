@@ -339,11 +339,17 @@ export default function blancheExtension(pi: any): void {
 			} else {
 				leaderName = (await selfName()) ?? pi.getSessionName?.();
 			}
-			if (!leaderName)
+			if (!leaderName) {
+				if (!channel) {
+					throw new Error(
+						"pi-blanche needs pi-intercom for crew messaging. Install it: pi install npm:pi-intercom",
+					);
+				}
 				throw new Error(
 					"This session is not on the intercom roster, so the crew could never hand work back to you. " +
 						"Check the broker is up (`intercom status`), or start pi with --name.",
 				);
+			}
 			const created = createTask({
 				id,
 				workflow,
