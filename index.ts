@@ -2,7 +2,15 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { createTask, currentRole, currentTaskId, listTasks, readBoard, taskDir, updateBoard } from "./board.ts";
+import {
+	createTask,
+	currentRole,
+	currentTaskId,
+	listTasks,
+	readBoard,
+	taskDir,
+	updateBoard,
+} from "./board.ts";
 import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
@@ -299,7 +307,7 @@ export default function blancheExtension(pi: any): void {
 			if (blocking) {
 				throw new Error(
 					`Crew ${blocking.id} is already active in this directory. Stop or clean it ` +
-					`(/crew stop, /crew clean ${blocking.id}), or start in another directory.`,
+						`(/crew stop, /crew clean ${blocking.id}), or start in another directory.`,
 				);
 			}
 			const id = `${workflow}-${Date.now().toString(36)}`;
