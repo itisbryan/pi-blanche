@@ -157,8 +157,9 @@ case "$*" in
 esac
 case "$1 $2" in
   "pane list") printf '%s\\n' '{"result":{"layout":{"panes":[]}}}' ;;
+  "pane layout") printf '%s\\n' '{"result":{"layout":{"panes":[{"pane_id":"resume-layout-repair-leader-pane","rect":{"x":0,"y":0,"width":10,"height":10}},{"pane_id":"created-pane","rect":{"x":10,"y":0,"width":10,"height":10}}]}}}' ;;
   "pane split") printf '%s\\n' '{"result":{"pane":{"pane_id":"created-pane"}}}' ;;
-  "pane run"|"pane focus") printf '%s\\n' '{"result":{"ok":true}}' ;;
+  "pane run"|"pane focus"*) printf '%s\\n' '{"result":{"ok":true}}' ;;
   *) printf '%s\\n' '{"result":{"ok":true}}' ;;
 esac
 `,
@@ -177,7 +178,7 @@ esac
 		assert.ok(
 			calls.some((call) => call.includes(`pane split --pane ${leaderPaneId}`) && call.includes("--no-focus")),
 		);
-		assert.ok(calls.includes(`pane focus ${leaderPaneId}`));
+		assert.ok(calls.includes(`pane focus --direction left --pane created-pane`));
 		assert.equal(readBoard(id).leader.paneId, leaderPaneId);
 	} finally {
 		if (oldHerdr === undefined) delete process.env.HERDR_BIN;
