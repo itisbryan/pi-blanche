@@ -16,7 +16,7 @@ import {
 import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
-import { partitionRoles, planKickoff, planRows } from "./layout.ts";
+import { partitionRoles, planKickoff, planLateRole, planRows } from "./layout.ts";
 import { registerLifecycle } from "./lifecycle.ts";
 import { extractPaneId, focusLeaderPane, runHerdr, spawnRole } from "./spawn.ts";
 import type { Board, HandoffDecision, Role } from "./types.ts";
@@ -207,20 +207,53 @@ export default function blancheExtension(pi: any): void {
 	// slot under the board lock before spawning, or dedupe on a live broker-name check.
 	const ensureRole = async (b: Board, target: Role): Promise<void> => {
 		if (b.sessions[target]) return;
+		let leaderPaneId = b.leader.paneId ?? process.env.HERDR_PANE_ID;
+		if (!leaderPaneId) {
+			try {
+				leaderPaneId = extractPaneId(await runHerdr(["pane", "current"]));
+			} catch {
+				leaderPaneId = undefined;
+			}
+		}
+		if (!leaderPaneId) throw new Error("Cannot place late role: leader pane id is unavailable.");
+		if (leaderPaneId !== b.leader.paneId) {
+			updateBoard(b.id, (fresh) => {
+				fresh.leader.paneId = leaderPaneId;
+			});
+		}
+		const reviewRoles: Role[] = ["planner", "advisor", "verifier"];
+		const executionRoles: Role[] = ["researcher", "worker", "qa"];
+		const group = reviewRoles.includes(target) ? reviewRoles : executionRoles;
+		const existingPane = group.map((role) => b.sessions[role]?.paneId).find(Boolean);
+		const plan = planLateRole({
+			role: target,
+			leaderPaneId,
+			reviewPaneId: existingPane,
+			executionPaneId: executionRoles.map((role) => b.sessions[role]?.paneId).find(Boolean),
+		});
+		const command = plan.commands[0];
+		const before = !process.env.HERDR_BIN ? paneIds(await runHerdr(["pane", "list"])) : [];
+		const result = await runHerdr(command);
+		let pane = extractPaneId(result);
+		if (!process.env.HERDR_BIN) {
+			const after = paneIds(await runHerdr(["pane", "list"]));
+			pane = after.find((candidate) => !before.includes(candidate)) ?? pane;
+		}
+		if (!pane) throw new Error(`Late role layout created no pane for ${target}.`);
 		const launched = await spawnRole({
 			role: target,
 			board: b,
 			profile: b.resolved.agents[target],
 			cwd: b.cwd,
 			liveSessions,
-			...(target === "advisor" && b.leader.paneId
-				? { splitTargetPaneId: b.leader.paneId, splitDirection: "right", splitRatio: 0.7143 }
-				: {}),
+			paneId: pane,
 		});
+		await focusLeaderPane(leaderPaneId).catch(() => undefined);
 		updateBoard(b.id, (fresh) => {
 			if (!fresh.sessions[target]) {
 				fresh.sessions[target] = { ...launched, contextEpoch: 0 };
 			}
+			fresh.leader.paneId = leaderPaneId;
 		});
 	};
 
