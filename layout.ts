@@ -62,8 +62,8 @@ export function planKickoff(input: any) {
 	const commands: string[][] = [];
 	const review = input.reviewRoles.length,
 		exec = input.executionRoles.length;
-	if (review) commands.push(split(input.leaderPaneId, "right", exec ? 20 : 20));
-	if (exec) commands.push(split(input.leaderPaneId, "right", exec ? 30 : 20));
+	if (exec) commands.push(split(input.leaderPaneId, "right", 0.3));
+	if (review) commands.push(split(input.leaderPaneId, "right", exec ? 0.2857 : 0.2));
 	return {
 		commands,
 		focusPaneId: input.leaderPaneId,
@@ -73,8 +73,8 @@ export function planKickoff(input: any) {
 }
 export function planLateRole(input: any) {
 	const commands = input.reviewPaneId
-		? [split(input.reviewPaneId, "down", 100)]
-		: [split(input.leaderPaneId, "right", 20)];
+		? [split(input.reviewPaneId, "down", 0.5)]
+		: [split(input.leaderPaneId, "right", 0.2)];
 	return {
 		commands,
 		focusPaneId: input.leaderPaneId,
@@ -99,6 +99,8 @@ export function planResume(input: any) {
 			input.leaderPaneId,
 			"--direction",
 			"right",
+			"--ratio",
+			"0.3",
 			"--no-focus",
 		]),
 		focusPaneId: input.leaderPaneId,
