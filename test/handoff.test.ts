@@ -103,6 +103,28 @@ test("unknown phase falls back to the destination as owner", () => {
 
 // --- failure cases ---
 
+test("self-handoffs reject before liveness, verdict, or mutation", () => {
+	for (const [from, to, expected] of [
+		["leader", "leader", /ask the user for the missing input/],
+		["worker", "worker", /Cannot hand off 'worker' to itself/],
+	] as const) {
+		const before = mkBoard();
+		const r = decideHandoff({
+			board: before,
+			from,
+			to,
+			phase: "IMPLEMENTING",
+			verdict: "PASS",
+			liveSessions: [],
+			now: 1,
+			handoffId: "self-loop",
+		} as any);
+		assert.equal(r.ok, false);
+		if (!r.ok) assert.match(r.error, expected);
+		assert.deepEqual(before, mkBoard(), `${from} self-handoff must not mutate the board`);
+	}
+});
+
 test("destination outside the roster errors and lists the roster", () => {
 	const r = call({ from: "qa", to: "researcher", verdict: "PASS" });
 	assert.equal(r.ok, false);
