@@ -321,6 +321,11 @@ export default function blancheExtension(pi: any): void {
 			const match = /^(\S+)\s+["']([\s\S]*)["']$/.exec(args);
 			if (!match) throw new Error('Usage: /crew <workflow> "<description>"');
 			const [workflow, description] = [match[1], match[2]];
+			if (!channel) {
+				throw new Error(
+					"pi-blanche needs pi-intercom for crew messaging. Install it: pi install npm:pi-intercom",
+				);
+			}
 			const crew = resolveCrew(loadConfig(), workflow);
 			const blocking = listTasks(process.cwd()).find((candidate) => candidate.status === "active");
 			if (blocking) {
