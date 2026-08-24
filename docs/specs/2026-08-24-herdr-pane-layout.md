@@ -222,26 +222,36 @@ perform one process-preserving reflow. If placement or registration fails:
 - close only the newly created role pane;
 - do not persist its session record;
 - keep every existing process alive;
-- report that `/crew resume` can retry canonical repair.
+- report that `/crew resume` can respawn the still-missing role (state repair;
+  it does not re-normalize layout geometry — see §Resume).
 
 A partial visual reflow may remain after a failed move/resize; this is recoverable
 layout state, not task-state corruption. Resume repairs it.
 
 ### Resume
 
-`/crew resume` is the explicit repair boundary:
+`/crew resume` is a STATE repair boundary, not a layout normalizer. In v1 it:
 
-1. query Herdr for every persisted leader/role pane ID;
-2. treat a missing ID as a missing role—never guess by sidebar order or geometric
-   proximity;
-3. respawn missing roles;
-4. move only task-owned panes back into canonical columns/order;
-5. restore 50/30/20, 70/30, or 80/20 ratios and equal row heights;
-6. update any pane ID Herdr reports as changed by a move;
-7. preserve leader focus.
+1. queries Herdr for every persisted leader/role pane ID;
+2. treats a missing ID as a missing role—never guessing by sidebar order or
+   geometric proximity;
+3. respawns each missing role, placing its new pane by splitting the leader
+   (right, 0.7) and updates the pane ID Herdr returns;
+4. preserves leader focus.
 
-Resume intentionally resets manual resizing because the user selected repair on
-resume. Normal operation does not.
+**Resume does NOT normalize existing-pane geometry, order, or ratios**
+(`ponytail:` v1 ceiling — resume repairs task STATE, not layout). Core resume
+is deliberately decoupled from layout repair so a resume without a resolvable
+Herdr pane still reactivates the task and republishes handoffs. A resumed crew
+is therefore continuable and correctly owned, but its panes may not be in the
+canonical leader | review | execution 50/20/30 arrangement — respawned roles are
+placed by a naive leader split. Full canonical re-layout on resume (move
+task-owned panes back into order, restore 50/20/30, 70/30, or 80/20 ratios and
+equal rows) is a documented residual; add it when a resumed layout drifting from
+canonical actually bites.
+
+Manual resizing is not restored either, for the same reason. Normal operation
+never normalizes layout.
 
 ### Stop
 
@@ -379,11 +389,14 @@ f. On hotfix, the execution stack has two leaves; explicitly confirm the review
    column spans the full height, not just one execution leaf's height — this is
    the exact failure the leader-split avoids.
 6. Manually resize task panes. Exercise an ordinary handoff; manual geometry
-   remains.
-7. Run `/crew resume`; canonical widths, row heights, and order return.
-8. Close one role pane. Resume respawns it in the correct stack with a new pane
-   ID while every surviving process ID remains unchanged.
-9. Stop the crew; topology stays. Resume; layout repairs without duplicate panes.
+   remains (normal operation never normalizes layout).
+7. Close one role pane. Run `/crew resume`; it respawns ONLY the missing role
+   (new pane id, split from the leader) while every surviving process ID remains
+   unchanged, reactivates the task, and preserves leader focus. It does NOT
+   restore canonical widths/rows/order — that is the documented v1 residual in
+   §Resume.
+8. A resume with all roles already live respawns nothing and simply reactivates.
+9. Stop the crew; topology stays. Resume adds no duplicate panes.
 10. Clean. Verify all task pane IDs are absent, leader recovers its region, focus
     is leader, sentinel pane/process/terminal content is unchanged, and temporary
     task files are removed.
