@@ -182,6 +182,34 @@ considered and declined. The full version added a `HANDOFF` pseudo-phase and
 pending state to detect a rare failure; stamping on injection and refusing
 upfront when the target is not live yields the same information for three lines.
 
+### Ownership does not re-prompt
+
+A role gets **exactly one turn per inbound handoff**. The board recording
+`owner: qa` does not cause qa to act — it is a fact about the task, not a
+scheduler. The poll ([§5.4](#54-delivery-and-acknowledgement)) delivers *new*
+handoffs; it has no notion of an outstanding obligation.
+
+So a role that receives work, does it, and ends its turn without calling
+`handoff` stalls the task permanently. Nothing is broken and nothing retries:
+the board still says that role owns the phase, and that role is never asked
+again.
+
+Found by dogfooding the first live multi-role cycle. The qa pane received
+worker→qa, ran a real turn (`agent_status=done`, 4.1% context, output
+`Ready.`), acknowledged the handoff — and never handed back. Every observable
+said healthy; the task simply stopped.
+
+**The fix is a prompt contract, not machinery.** Every phase-owning role prompt
+ends with an explicit terminal instruction: your turn ends with a handoff, and
+if you cannot complete, hand to the leader explaining why. A stall detector or
+re-nudge timer was considered and rejected — that is real machinery, with its
+own failure mode, for what was a missing sentence.
+
+Note this is a *protocol* obligation the agent must honour, and the system does
+not enforce it. That is consistent with everything else here being advisory
+([§5.5](#55-escalation)), but it is the one advisory rule whose breach is silent
+rather than visible.
+
 ## 5.5 Escalation
 
 The worker/qa cycle is the only cycle in the protocol, and it is bounded twice.
