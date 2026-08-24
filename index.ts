@@ -55,7 +55,8 @@ export default function blancheExtension(pi: any): void {
 	const sessions: Partial<Record<Role, { contextEpoch: number }>> = {};
 	const seenHandoffIds = new Set<string>();
 	const role = (): Role | undefined => currentRole();
-	const taskId = (): string | undefined => currentTaskId(process.cwd(), pi.getSessionName?.());
+	const taskId = (): string | undefined =>
+		currentTaskId(process.cwd(), process.env.BLANCHE_TASK ? undefined : pi.getSessionName?.());
 
 	// Shared by the handoff tool and by kickoff's opening handoff.
 	const sendHandoff = async (b: Board, from: Role, input: any): Promise<string[]> => {
