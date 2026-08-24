@@ -210,11 +210,41 @@ Independence is preserved by the verifier, who reviews the implementation *and*
 qa's tests against the design. qa authoring assertions it will later run remains
 independent of the implementation, which is the property that matters.
 
-## 7.4 What is not proven
+## 7.4 Live verification
 
-**A live kickoff against real panes.** Real pane creation, a spawned agent
-registering on the broker, and a handoff moving an actual turn between two
-sessions.
+**A live kickoff against real panes now passes.** `/crew investigate "..."`
+spawned real herdr panes, both agents registered on the broker, the opening
+handoff was committed, published, delivered and acknowledged without
+intervention, and the researcher ran a real turn — reading the file and
+answering. Board: `phase INVESTIGATING`, `acked: true`, pane context 0.0% →
+7.9%.
+
+It took four defects to get there, none of which any test could see, and all
+four were in the seam between the extension and its host:
+
+1. **`BLANCHE_ROLE`/`BLANCHE_TASK` exist only in spawned panes.** In the
+   operator's own session both were undefined, so `handoff` threw and `status`
+   printed nothing — the one session allowed to start a task could not.
+2. **`handoff` is an agent tool, so an operator cannot call it.** Kickoff created
+   a task at `REQUESTED` owned by the leader with no operator-facing way to
+   start it. Kickoff now performs the opening handoff itself.
+3. **Delivery depended on two single moments.** A publish before the receiver's
+   channel negotiated was dropped; a single pull-on-ready before the sender
+   committed saw nothing. Now polled.
+4. **`pi.sendMessage` takes a `CustomMessage`, not a string.** Passing a bare
+   string injected nothing, silently. Handoffs were committed, published,
+   delivered *and acked* while no turn ever ran — the board looked healthy and
+   the pane sat at 0.0% context.
+
+Defect 4 is the sharpest instance of the rule in
+[§7.2.1](#721-generalisations): a confidently wrong value beats an absent one
+for how long it hides. Every observable said delivered.
+
+### Still unproven
+
+A full multi-role cycle — worker → qa → verifier with a rework loop and an
+advisor escalation — has not been run live. Only the opening handoff of a
+two-role `investigate` has.
 
 Pane lifecycle *is* exercised against `test/fake-herdr.sh`, a stub emitting the
 real response envelopes, asserting that the identifier is extracted from
