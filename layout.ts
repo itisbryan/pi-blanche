@@ -76,7 +76,6 @@ export function planKickoff(input: any) {
 		commands: [...commands, ...planRows("execution", input.executionRoles)],
 		rowCommands: planRows("execution", input.executionRoles),
 		focusPaneId: input.leaderPaneId,
-		createdPaneIds: [...input.reviewRoles, ...input.executionRoles].map((r: string) => r),
 		columnCreation: !!review && !!exec,
 	};
 }
@@ -89,10 +88,6 @@ export function planLateRole(input: any) {
 		focusPaneId: input.leaderPaneId,
 		createdRole: input.role,
 		existingPaneIds: [input.leaderPaneId, ...(input.executionPaneId ? [input.executionPaneId] : [])],
-		failureCleanup: {
-			closePaneIds: [input.role],
-			preservePaneIds: [input.leaderPaneId, ...(input.executionPaneId ? [input.executionPaneId] : [])],
-		},
 		columnCreation: !input.reviewPaneId,
 	};
 }
@@ -120,18 +115,4 @@ export function planClean(input: any) {
 		commands: input.rolePaneIds.map((id: string) => ["pane", "close", id]),
 		focusPaneId: input.leaderPaneId,
 	};
-}
-export async function applyPlan(plan: any, herdr: any) {
-	const results = [];
-	try {
-		for (const argv of plan.commands) results.push(await herdr.run(argv));
-		return results;
-	} catch (e) {
-		for (const id of [...(plan.createdPaneIds ?? [])].reverse()) await herdr.run(["pane", "close", id]);
-		throw e;
-	}
-}
-export function rollbackKickoff(plan: any) {
-	const ids = [...(plan.createdPaneIds ?? [])].reverse();
-	return { closePaneIds: [...ids, ...ids.slice().reverse()], persistedRoles: [] };
 }
