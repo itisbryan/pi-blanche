@@ -18,7 +18,7 @@ import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
 import { partitionRoles, planKickoff, planRows } from "./layout.ts";
 import { registerLifecycle } from "./lifecycle.ts";
-import { extractPaneId, runHerdr, spawnRole } from "./spawn.ts";
+import { extractPaneId, focusLeaderPane, runHerdr, spawnRole } from "./spawn.ts";
 import type { Board, HandoffDecision, Role } from "./types.ts";
 import { createCrewWidget } from "./widget.ts";
 
@@ -577,7 +577,7 @@ export default function blancheExtension(pi: any): void {
 						contextEpoch: 0,
 					};
 				}
-				await runHerdr(["pane", "focus", leaderPaneId]);
+				await focusLeaderPane(leaderPaneId).catch(() => undefined);
 				updateBoard(created.id, (fresh) => {
 					fresh.sessions = created.sessions;
 				});

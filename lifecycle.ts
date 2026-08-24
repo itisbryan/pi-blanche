@@ -13,7 +13,7 @@ import {
 	writeConsultation,
 } from "./board.ts";
 import { planResume } from "./layout.ts";
-import { extractPaneId, runHerdr, spawnRole } from "./spawn.ts";
+import { extractPaneId, focusLeaderPane, runHerdr, spawnRole } from "./spawn.ts";
 import type { Board, CheckpointInput, Role } from "./types.ts";
 
 type Deps = { channel: () => any; liveSessions: () => Promise<string[]> };
@@ -118,7 +118,7 @@ export function registerLifecycle(
 				});
 				b = readBoard(id);
 			}
-			if (repair && leaderPaneId) await runHerdr(["pane", "focus", leaderPaneId]).catch(() => undefined);
+			if (repair && leaderPaneId) await focusLeaderPane(leaderPaneId).catch(() => undefined);
 			updateBoard(id, (x) => {
 				x.leader.sessionName = leaderName;
 				x.status = "active";

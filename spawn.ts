@@ -24,6 +24,23 @@ export function buildRoleCommand(input: {
 }
 const crewExtensions = (): string[] =>
 	[process.env.BLANCHE_INTERCOM_EXTENSION, process.env.BLANCHE_EXTENSION].filter(Boolean) as string[];
+export async function focusLeaderPane(leaderPaneId: string): Promise<void> {
+	const raw = await runHerdr(["pane", "layout"]);
+	const layout = (raw as any)?.layout ?? raw;
+	const panes = Array.isArray(layout?.panes) ? layout.panes : [];
+	const leader = panes.find((pane: any) => pane.pane_id === leaderPaneId);
+	if (!leader) return;
+	const source = panes
+		.filter(
+			(pane: any) =>
+				pane.pane_id !== leaderPaneId &&
+				pane.rect?.x > leader.rect.x &&
+				pane.rect.y < leader.rect.y + leader.rect.height &&
+				pane.rect.y + pane.rect.height > leader.rect.y,
+		)
+		.sort((a: any, b: any) => a.rect.x - b.rect.x)[0];
+	if (source?.pane_id) await runHerdr(["pane", "focus", "--direction", "left", "--pane", source.pane_id]);
+}
 export const runHerdr = (args: string[]): Promise<unknown> =>
 	new Promise((resolve, reject) => {
 		execFile(process.env.HERDR_BIN ?? "herdr", args, { shell: false }, (error, stdout, stderr) => {
