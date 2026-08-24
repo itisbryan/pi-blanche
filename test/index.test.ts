@@ -249,11 +249,27 @@ test("crew widget is hidden from bystanders and shown to participants", async ()
 		return calls[calls.length - 1]?.[1];
 	};
 
+	const assertFactory = async (name: string, explicitRole?: string) => {
+		const factory = await capture(name, explicitRole);
+		assert.equal(typeof factory, "function", "participant widget must be a component factory");
+		const component = (
+			factory as (
+				tui: { requestRender(): void },
+				theme: Record<string, (text: string) => string>,
+			) => {
+				render(width: number): string[];
+				dispose(): void;
+			}
+		)({ requestRender() {} }, {});
+		assert.equal(typeof component.render, "function");
+		component.dispose();
+	};
+
 	try {
 		assert.equal(await capture("operator"), undefined, "unrelated operator must not see the widget");
-		assert.ok(Array.isArray(await capture("operator", "worker")), "BLANCHE_ROLE participant");
-		assert.ok(Array.isArray(await capture("leader-session")), "leader participant");
-		assert.ok(Array.isArray(await capture("worker-session")), "recorded role participant");
+		await assertFactory("operator", "worker");
+		await assertFactory("leader-session");
+		await assertFactory("worker-session");
 	} finally {
 		process.chdir(oldCwd);
 		restoreEnv("BLANCHE_ROLE", oldRole);
