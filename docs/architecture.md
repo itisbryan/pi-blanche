@@ -92,6 +92,30 @@ The operational test for I1, applied as an acceptance criterion:
 > *If every pi transcript were deleted right now, could `/crew resume`
 > reconstruct enough truth for each role to continue correctly?*
 
+```mermaid
+flowchart LR
+  subgraph VOL["Volatile — assumed lost at any moment"]
+    CTX["Agent context<br/>conversation transcript"]
+  end
+  subgraph COORD["Coordination — survives session loss, not broker loss"]
+    CH["Intercom channel<br/>presence · handoff publish"]
+  end
+  subgraph DUR["Durable — survives everything"]
+    TD["Task directory<br/>board.json · task.md · plan.md<br/>specs/ · consultations/ · checkpoints/"]
+  end
+
+  TD -->|"rebuilt into, every turn"| CTX
+  TD -->|"reconstructible"| CH
+  CTX -->|"checkpoint, handoff"| TD
+
+  style DUR fill:#1b3a1b,color:#fff
+  style COORD fill:#3a3a1b,color:#fff
+  style VOL fill:#3a1b1b,color:#fff
+```
+
+Arrows into the durable layer are the only ones that persist information;
+everything flowing outward is a projection that may be destroyed at any time.
+
 ### 2.3 Task directory
 
 ```
@@ -138,6 +162,33 @@ Items 1–7 are read from disk on every turn. `buildCrewBlock` itself is a pure
 function of its arguments: all file content arrives as parameters and the
 renderer performs no I/O. This makes the assembly independently testable and
 keeps the read policy in one place.
+
+The resulting cycle — and the epoch boundary it survives — is:
+
+```mermaid
+flowchart TD
+  A["Turn starts"] --> B["before_agent_start"]
+  B --> C["Read from disk:<br/>role prompt · phase list · spec body<br/>latest checkpoint · latest consultation"]
+  C --> D["Return systemPrompt<br/>replaces previous block"]
+  D --> E["Agent works"]
+  E --> F{"contextPct ≥ softLimit?"}
+  F -->|yes| G["CONTEXT_PRESSURE hint"]
+  F -->|no| H["Semantic boundary?<br/>qa fail · consult · pre-verify"]
+  G --> I["checkpoint written to disk"]
+  H -->|yes| I
+  H -->|no| J{"pi compacts?"}
+  I --> J
+  J -->|"no"| A
+  J -->|"session_compact<br/>manual / threshold / overflow"| K["contextEpoch++<br/>transcript summarised or lost"]
+  K --> A
+
+  style K fill:#3a1b1b,color:#fff
+  style I fill:#1b3a1b,color:#fff
+```
+
+The epoch boundary (red) has no handler. Because step C runs on *every* turn,
+the first turn of the new epoch is briefed identically to any other turn — from
+disk, including the checkpoint written at step I (green).
 
 ### 3.3 Ephemerality of the injected block
 
@@ -293,6 +344,38 @@ roster containing a planner for a workflow with no planning phase — and its
 repair required a phase-composition language, which is a larger construct than
 the seven presets it would generalise.
 
+The `feat` workflow, which exercises every construct:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> REQUESTED
+    REQUESTED --> DISCOVERY
+    DISCOVERY --> PLANNING
+    PLANNING --> PLAN_REVIEW
+    PLAN_REVIEW --> IMPLEMENTING
+    IMPLEMENTING --> QA
+    QA --> VERIFY: PASS
+    QA --> IMPLEMENTING: FAIL, rework++
+    VERIFY --> DONE: APPROVED
+    VERIFY --> IMPLEMENTING: CHANGES, rework++
+    DONE --> [*]
+
+    note right of PLAN_REVIEW
+        owner: leader
+        never agent-only
+    end note
+    note right of IMPLEMENTING
+        rework = advisorAfter: consult advisor
+        rework > maxRework: refuse, route to leader
+    end note
+```
+
+Ownership per phase is configuration, not code: `owner` is read from the
+workflow, so `TARGETED_QA` and `REGRESSION_QA` need no special handling
+anywhere in the protocol. The two notes mark the only points where the loop is
+interrupted — one by the operator, one by the bound.
+
 ### 5.3 Handoff protocol
 
 A handoff is the only operation that advances the task. It is decomposed into a
@@ -348,6 +431,35 @@ Delivery requires all three of: `taskId` match, `to` = own role, and
 `handoffId` unseen. Each is necessary — the channel is broadcast, concurrent
 tasks coexist, and `resume` deliberately republishes unacknowledged handoffs, so
 a legitimate duplicate must be suppressed rather than double-delivered.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Q as qa session
+    participant BD as board.json
+    participant CH as intercom channel
+    participant W as worker session
+
+    Q->>BD: updateBoard(id, mutate)
+    Note over BD: lock acquired<br/>board read FRESH inside lock
+    BD->>BD: decideHandoff(fresh) — pure, clones input
+
+    alt rejected
+        BD-->>Q: throw reason<br/>board byte-identical
+    else accepted
+        BD->>BD: apply result, write, release lock
+        Q->>CH: publish taskId, handoffId, to, verdict
+        CH->>W: payload broadcast
+        W->>W: shouldDeliver? taskId AND role AND unseen
+        W->>BD: stamp ackedAt
+        W->>W: sendMessage triggerTurn
+    end
+```
+
+The ordering in steps 5–6 is deliberate: the commit completes before the
+publish. Publishing first would let a receiver act on a handoff that never
+committed. Step 8 is what makes an undelivered handoff observable rather than
+silent.
 
 On delivery the receiver stamps `ackedAt` and injects the message as a real turn.
 An unacknowledged record is therefore an observable, recoverable condition rather
