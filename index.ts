@@ -17,9 +17,10 @@ import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
 import { registerLifecycle } from "./lifecycle.ts";
-import { spawnRole } from "./spawn.ts";
+import { partitionRoles, planKickoff } from "./layout.ts";
 import type { Board, HandoffDecision, Role } from "./types.ts";
 import { createCrewWidget } from "./widget.ts";
+import { extractPaneId, runHerdr, spawnRole } from "./spawn.ts";
 
 const namespace = "blanche/v1";
 const closePane = (paneId: string): Promise<void> =>
@@ -170,12 +171,6 @@ export default function blancheExtension(pi: any): void {
 				widgetTui = tui;
 				const component = createCrewWidget(widgetSnapshot ?? initial, {
 					tui,
-					clock: {
-						setInterval: (fn, ms) => setInterval(fn, ms),
-						clearInterval: (timer) => clearInterval(timer as unknown as ReturnType<typeof setInterval>),
-						setTimeout: (fn, ms) => setTimeout(fn, ms),
-						clearTimeout: (timer) => clearTimeout(timer as unknown as ReturnType<typeof setTimeout>),
-					},
 					theme: () => {
 						const liveTheme = context.ui.theme;
 						if (liveTheme?.fg) {
@@ -485,6 +480,11 @@ export default function blancheExtension(pi: any): void {
 						"Check the broker is up (`intercom status`), or start pi with --name.",
 				);
 			}
+			const leaderPaneResult = process.env.HERDR_PANE_ID
+				? { pane: { pane_id: process.env.HERDR_PANE_ID } }
+				: await runHerdr(["pane", "current"]);
+			const leaderPaneId = process.env.HERDR_PANE_ID ?? extractPaneId(leaderPaneResult);
+			if (!leaderPaneId) throw new Error("Could not determine the leader Herdr pane.");
 			const created = createTask({
 				id,
 				workflow,
@@ -495,7 +495,7 @@ export default function blancheExtension(pi: any): void {
 				prefix: crew.prefix,
 				phase: crew.phases[0]?.name ?? "REQUESTED",
 				owner: "leader",
-				leader: { sessionName: leaderName },
+				leader: { sessionName: leaderName, paneId: leaderPaneId },
 			});
 			const openedPanes: string[] = [];
 			// ponytail: only the advisor is lazy — its trigger is the advisorAfter nudge.
@@ -505,22 +505,50 @@ export default function blancheExtension(pi: any): void {
 			const eagerRoles = new Set(crew.phases.map((phase) => phase.owner));
 			if (service.has("researcher")) eagerRoles.add("researcher");
 			try {
+				const groups = partitionRoles([...eagerRoles]);
+				const plan = planKickoff({
+					leaderPaneId,
+					reviewRoles: groups.review,
+					executionRoles: groups.execution,
+				});
+				const columns: string[] = [];
+				for (const command of plan.commands) {
+					const result = await runHerdr(command);
+					const pane = extractPaneId(result);
+					if (!pane) throw new Error("Layout plan created no pane id.");
+					columns.push(pane);
+					openedPanes.push(pane);
+				}
+				const rolePane = new Map<Role, string>();
+				if (groups.review.length && columns[0])
+					for (const role of groups.review) rolePane.set(role, columns[0]);
+				if (groups.execution.length && columns[groups.review.length ? 1 : 0])
+					for (const role of groups.execution) rolePane.set(role, columns[groups.review.length ? 1 : 0]);
+				const usedColumns = new Set<string>();
 				for (const member of crew.roster) {
 					if (!eagerRoles.has(member)) continue;
+					const targetPane = rolePane.get(member) ?? leaderPaneId;
+					const firstInColumn = !usedColumns.has(targetPane);
 					const launched = await spawnRole({
 						role: member,
 						board: created,
 						profile: crew.agents[member],
 						cwd: process.cwd(),
 						liveSessions,
+						...(firstInColumn
+							? { paneId: targetPane }
+							: { splitTargetPaneId: targetPane, splitDirection: "down", splitRatio: 100 }),
 					});
-					openedPanes.push(launched.paneId);
+					usedColumns.add(targetPane);
+					rolePane.set(member, launched.paneId);
+					if (!openedPanes.includes(launched.paneId)) openedPanes.push(launched.paneId);
 					created.sessions[member] = {
 						sessionName: launched.sessionName,
 						paneId: launched.paneId,
 						contextEpoch: 0,
 					};
 				}
+				await runHerdr(["pane", "focus", leaderPaneId]);
 				updateBoard(created.id, (fresh) => {
 					fresh.sessions = created.sessions;
 				});

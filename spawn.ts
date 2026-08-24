@@ -20,7 +20,7 @@ export function buildRoleCommand(input: {
 		shellQuote(input.profile.thinking),
 	].join(" ");
 }
-const runHerdr = (args: string[]): Promise<unknown> =>
+export const runHerdr = (args: string[]): Promise<unknown> =>
 	new Promise((resolve, reject) => {
 		execFile(process.env.HERDR_BIN ?? "herdr", args, { shell: false }, (error, stdout, stderr) => {
 			if (error) {
@@ -43,7 +43,7 @@ const runHerdr = (args: string[]): Promise<unknown> =>
 		});
 	});
 
-function paneId(value: unknown): string | undefined {
+export function extractPaneId(value: unknown): string | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const record = value as Record<string, unknown>;
 	const pane =
@@ -57,11 +57,32 @@ export async function spawnRole(input: {
 	profile: AgentProfile;
 	cwd: string;
 	liveSessions: () => Promise<string[]>;
+	paneId?: string;
+	splitTargetPaneId?: string;
+	splitDirection?: "right" | "down";
+	splitRatio?: number;
 }): Promise<{ sessionName: string; paneId: string }> {
 	const taskId = input.board.id;
 	const sessionName = `${input.board.prefix}-${taskId}-${input.role}`;
-	const split = await runHerdr(["pane", "split", "--current", "--direction", "right", "--cwd", input.cwd]);
-	const id = paneId(split);
+	let id = input.paneId;
+	if (!id) {
+		const target = input.splitTargetPaneId;
+		const splitArgs = target
+			? [
+					"pane",
+					"split",
+					"--pane",
+					target,
+					"--direction",
+					input.splitDirection ?? "down",
+					"--ratio",
+					String(input.splitRatio ?? 100),
+					"--no-focus",
+				]
+			: ["pane", "split", "--current", "--direction", "right", "--cwd", input.cwd];
+		const split = await runHerdr(splitArgs);
+		id = extractPaneId(split);
+	}
 	if (!id) throw new Error("Herdr pane split returned no pane id.");
 	const command = buildRoleCommand({ role: input.role, taskId, sessionName, profile: input.profile });
 	try {

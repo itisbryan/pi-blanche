@@ -13,10 +13,27 @@ import {
 	writeCheckpoint,
 	writeConsultation,
 } from "./board.ts";
-import { spawnRole } from "./spawn.ts";
+import { extractPaneId, runHerdr, spawnRole } from "./spawn.ts";
+import { planResume } from "./layout.ts";
 import type { Board, CheckpointInput, Role } from "./types.ts";
 
 type Deps = { channel: () => any; liveSessions: () => Promise<string[]> };
+const observedPaneIds = async (): Promise<string[]> => {
+	try {
+		const raw = await runHerdr(["pane", "list", "--json"]);
+		const ids: string[] = [];
+		const visit = (value: any): void => {
+			if (Array.isArray(value)) return value.forEach(visit);
+			if (!value || typeof value !== "object") return;
+			if (typeof value.pane_id === "string") ids.push(value.pane_id);
+			Object.values(value).forEach(visit);
+		};
+		visit(raw);
+		return ids;
+	} catch {
+		return [];
+	}
+};
 const closePane = (id: string) =>
 	new Promise<void>((resolve) =>
 		execFile(process.env.HERDR_BIN ?? "herdr", ["pane", "close", id], () => resolve()),
@@ -48,24 +65,41 @@ export function registerLifecycle(
 			pi.setSessionName?.(leaderName);
 			b = readBoard(id);
 			const live = await deps.liveSessions();
+			const persistedPaneIds: Partial<Record<Role, string>> = Object.fromEntries(
+				b.resolved.roster.map((role) => [role, b.sessions[role]?.paneId ?? `missing:${role}`]),
+			) as Partial<Record<Role, string>>;
+			if (!b.leader.paneId) throw Error("Cannot resume layout: leader pane id is missing; refuse to guess.");
+			const leaderPaneId = b.leader.paneId;
+			const repair = planResume({
+				leaderPaneId,
+				persistedPaneIds,
+				observedPaneIds: await observedPaneIds(),
+			});
 			const missing = b.resolved.roster.filter(
-				(r) => !b.sessions[r] || !live.includes(b.sessions[r]?.sessionName),
+				(r) =>
+					!b.sessions[r] || !live.includes(b.sessions[r]?.sessionName) || repair.respawnRoles.includes(r),
 			);
-			for (const role of missing) {
+			for (let i = 0; i < missing.length; i++) {
+				const command = repair.commands[i];
+				const result = command ? await runHerdr(command) : undefined;
+				const pane = result ? extractPaneId(result) : undefined;
+				if (!pane) throw Error(`Cannot repair pane for ${missing[i]}; refusing to guess.`);
 				const spawned = await spawnRole({
-					role,
+					role: missing[i],
 					board: b,
-					profile: b.resolved.agents[role],
+					profile: b.resolved.agents[missing[i]],
 					cwd: b.cwd,
 					liveSessions: deps.liveSessions,
+					paneId: pane,
 				});
 				updateBoard(id, (x) => {
-					x.sessions[role] = { ...(x.sessions[role] ?? { contextEpoch: 0 }), ...spawned };
+					x.sessions[missing[i]] = { ...(x.sessions[missing[i]] ?? { contextEpoch: 0 }), ...spawned };
 					x.leader.sessionName = leaderName;
 					x.status = "active";
 				});
 				b = readBoard(id);
 			}
+			await runHerdr(["pane", "focus", leaderPaneId]);
 			if (!missing.length)
 				updateBoard(id, (x) => {
 					x.leader.sessionName = leaderName;
