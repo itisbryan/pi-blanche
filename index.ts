@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -264,7 +266,17 @@ export default function blancheExtension(pi: any): void {
 	pi.registerTool?.({
 		name: "handoff",
 		description: "Hand off the current crew task.",
-		parameters: {},
+		parameters: Type.Object({
+			to: StringEnum(["leader", "planner", "researcher", "advisor", "worker", "qa", "verifier"] as const, {
+				description: "Crew role receiving this handoff.",
+			}),
+			phase: Type.String({ description: "Target phase name from this workflow." }),
+			spec: Type.Optional(Type.String({ description: "Current spec id, when the workflow uses specs." })),
+			message: Type.String({ description: "What the receiving role needs to act." }),
+			verdict: Type.Optional(StringEnum(["PASS", "FAIL", "APPROVED", "CHANGES"] as const, {
+				description: "QA or verifier verdict, when applicable.",
+			})),
+		}),
 		execute: async (_id: string, input: any) => {
 			const currentBoard = board();
 			const from = role();
