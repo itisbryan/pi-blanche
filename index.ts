@@ -138,68 +138,83 @@ export default function blancheExtension(pi: any): void {
 	let widgetComponent: ReturnType<typeof createCrewWidget> | undefined;
 	let widgetTui: { requestRender(): void } | undefined;
 	const refreshWidget = async (context = uiContext): Promise<void> => {
-		if (!context?.ui?.setWidget) return;
-		const current = board();
-		const name = sessionName();
-		const participant =
-			!!process.env.BLANCHE_ROLE ||
-			(current !== undefined &&
-				(name === current.leader.sessionName ||
-					Object.values(current.sessions).some((session) => session?.sessionName === name)));
-		if (!current || !participant) {
+		try {
+			let ui: any;
+			try {
+				ui = context?.ui;
+			} catch {
+				return;
+			}
+			if (!ui?.setWidget) return;
+			const current = board();
+			const name = sessionName();
+			const participant =
+				!!process.env.BLANCHE_ROLE ||
+				(current !== undefined &&
+					(name === current.leader.sessionName ||
+						Object.values(current.sessions).some((session) => session?.sessionName === name)));
+			if (!current || !participant) {
+				widgetComponent?.dispose();
+				widgetComponent = undefined;
+				widgetSnapshot = undefined;
+				widgetKey = undefined;
+				widgetTui = undefined;
+				ui.setWidget("blanche", undefined);
+				return;
+			}
+			const live = await liveRoster();
+			const snapshot: Parameters<typeof createCrewWidget>[0] = {
+				board: current,
+				viewer: { role: process.env.BLANCHE_ROLE as Role | undefined, sessionName: name },
+				liveRoster: live,
+			};
+			const key = `${current.id}|${snapshot.viewer.role ?? ""}|${snapshot.viewer.sessionName ?? ""}`;
+			widgetSnapshot = snapshot;
+			if (widgetKey === key) {
+				widgetComponent?.update(snapshot);
+				widgetTui?.requestRender();
+				return;
+			}
 			widgetComponent?.dispose();
 			widgetComponent = undefined;
-			widgetSnapshot = undefined;
-			widgetKey = undefined;
 			widgetTui = undefined;
-			context.ui.setWidget("blanche", undefined);
+			widgetKey = key;
+			const initial = widgetSnapshot;
+			if (!initial) return;
+			ui.setWidget(
+				"blanche",
+				(tui: { requestRender(): void }, theme: Record<string, (s: string) => string>) => {
+					widgetTui = tui;
+					const component = createCrewWidget(widgetSnapshot ?? initial, {
+						tui,
+						theme: () => {
+							let liveTheme: any;
+							try {
+								liveTheme = context?.ui?.theme;
+							} catch {
+								liveTheme = undefined;
+							}
+							if (liveTheme?.fg) {
+								return {
+									accent: (text: string) => liveTheme.fg("accent", text),
+									borderAccent: (text: string) => liveTheme.fg("borderAccent", text),
+									dim: (text: string) => liveTheme.fg("dim", text),
+									error: (text: string) => liveTheme.fg("error", text),
+									muted: (text: string) => liveTheme.fg("muted", text),
+									success: (text: string) => liveTheme.fg("success", text),
+									warning: (text: string) => liveTheme.fg("warning", text),
+								};
+							}
+							return theme;
+						},
+					});
+					widgetComponent = component;
+					return component;
+				},
+			);
+		} catch {
 			return;
 		}
-		const live = await liveRoster();
-		const snapshot: Parameters<typeof createCrewWidget>[0] = {
-			board: current,
-			viewer: { role: process.env.BLANCHE_ROLE as Role | undefined, sessionName: name },
-			liveRoster: live,
-		};
-		const key = `${current.id}|${snapshot.viewer.role ?? ""}|${snapshot.viewer.sessionName ?? ""}`;
-		widgetSnapshot = snapshot;
-		if (widgetKey === key) {
-			widgetComponent?.update(snapshot);
-			widgetTui?.requestRender();
-			return;
-		}
-		widgetComponent?.dispose();
-		widgetComponent = undefined;
-		widgetTui = undefined;
-		widgetKey = key;
-		const initial = widgetSnapshot;
-		if (!initial) return;
-		context.ui.setWidget(
-			"blanche",
-			(tui: { requestRender(): void }, theme: Record<string, (s: string) => string>) => {
-				widgetTui = tui;
-				const component = createCrewWidget(widgetSnapshot ?? initial, {
-					tui,
-					theme: () => {
-						const liveTheme = context.ui.theme;
-						if (liveTheme?.fg) {
-							return {
-								accent: (text: string) => liveTheme.fg("accent", text),
-								borderAccent: (text: string) => liveTheme.fg("borderAccent", text),
-								dim: (text: string) => liveTheme.fg("dim", text),
-								error: (text: string) => liveTheme.fg("error", text),
-								muted: (text: string) => liveTheme.fg("muted", text),
-								success: (text: string) => liveTheme.fg("success", text),
-								warning: (text: string) => liveTheme.fg("warning", text),
-							};
-						}
-						return theme;
-					},
-				});
-				widgetComponent = component;
-				return component;
-			},
-		);
 	};
 	// ponytail: spawn-then-record reads a stale board, so two concurrent
 	// escalations could spawn duplicate advisor panes and leak the unrecorded
@@ -430,7 +445,11 @@ export default function blancheExtension(pi: any): void {
 			// ponytail: 3s poll of one small JSON file. Swap for a session_joined
 			// handshake before publishing if this ever shows up in a profile.
 			pullOwed();
-			const timer = setInterval(pullOwed, 3000);
+			const timer = setInterval(() => {
+				try {
+					pullOwed();
+				} catch {}
+			}, 3000);
 			timer.unref?.();
 		},
 	});
