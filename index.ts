@@ -207,17 +207,22 @@ export default function blancheExtension(pi: any): void {
 		}
 		// sendMessage takes a CustomMessage, not a string. Passing a string silently
 		// injects nothing, which is why handoffs acked but no turn ever ran.
+		const actionLines = [
+			`[blanche] You are now ${payload.to} for ${payload.taskId}, phase ${payload.phase}${payload.spec ? `, spec ${payload.spec}` : ""}.`,
+			"This is work, not conversation. Complete this phase, then end your turn by calling handoff(...). If you cannot, handoff to leader with the reason.",
+			...(payload.verdict ? [`Incoming verdict: ${payload.verdict}`] : []),
+			...(payload.to === "advisor"
+				? ["ACTION REQUIRED: call consult first, then handoff your advice back to the worker."]
+				: []),
+		];
 		pi.sendMessage?.(
 			{
 				customType: "blanche_handoff",
 				content: [
+					...actionLines,
+					"Sender message:",
 					payload.message ?? `Handoff for ${payload.phase}`,
 					...(payload.notes ?? []),
-					...(payload.to === "advisor"
-						? [
-								"ACTION REQUIRED: call consult now with role advisor/requestedBy worker, then handoff your advice back to the worker.",
-							]
-						: []),
 				].join("\n"),
 				display: true,
 				details: payload,
