@@ -160,7 +160,7 @@ Delivery requires **all three**:
 
 | Condition | Necessary because |
 |---|---|
-| `taskId` matches | the channel is broadcast; concurrent tasks coexist |
+| `taskId` matches | the channel is broadcast; concurrent tasks coexist across cwds |
 | `to` = own role | every crew member receives every payload |
 | `handoffId` unseen | `resume` deliberately republishes unacknowledged handoffs |
 

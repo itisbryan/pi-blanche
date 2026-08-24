@@ -33,6 +33,25 @@ service role. Consequences:
   it waits.
 - They cannot block progress, because progress is not defined in terms of them.
 
+#### Spawn timing
+
+The **advisor is spawned on demand**, not at kickoff — when a handoff targets it,
+or when the `advisorAfter` directive first fires. Measured before the change:
+`consultations = 0` across every task ever run, while the advisor sat in six of
+seven rosters costing a pane, a model and a registration wait on every kickoff.
+`investigate` now spawns one pane instead of two.
+
+The trade is real and worth naming: the first escalation pays a spawn plus a
+registration wait, inside a path that is already slow.
+
+The **researcher stays eager**, and the asymmetry is deliberate. Agents reach it
+with a plain `intercom` message, which the extension does not mediate — so there
+is no trigger to hook. Spawning it lazily would advertise a peer name with no
+session behind it, which is the confident-wrong-value failure this codebase has
+hit repeatedly ([§7.2](verification.md#72-three-defects-that-passed-a-green-suite)).
+Relatedly, the injected peer list contains only roles that currently have a
+session: an agent is never handed a name it cannot reach.
+
 ### Why retrieval and inference are separate roles
 
 Conflating them forces one of two bad outcomes: an expensive agent performing

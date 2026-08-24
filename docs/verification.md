@@ -267,6 +267,18 @@ should be treated as material, not cosmetic.**
   execution is demonstrated to be the bottleneck — and note that the first
   observed cost of concurrency was not compute but coordination: two agents in
   one tree collided at the version-control layer within minutes.
+- **One crew per directory.** Kickoff refuses when an active crew already exists
+  in the cwd. The operator's session is a singular chokepoint — one name, one
+  resolved task, one `leader` delivery target — and kickoff renames it to
+  `{prefix}-{taskId}-leader`, so a second crew in the same directory makes the
+  first crew's `leader.sessionName` stale and it can never be handed back to. A
+  stable operator name was considered and rejected: it moves the failure rather
+  than removing it, since a stable name carries no task id and the ambiguity
+  reappears at resolution time. Crews coexist across directories; within one
+  directory, one crew. The refusal is gated on `status === "active"`, so a
+  stopped or cleaned crew does not block a new one, and it is deliberately not
+  gated on session liveness — that would make the same command behave
+  differently depending on whether the broker happened to be up.
 - **Single host.** Broker and task directory are local.
 - **Advisory protocol.** Only the rework bound is enforced.
 - **Lock ceiling.** [6.3](consistency.md#63-known-ceiling).
@@ -276,6 +288,9 @@ should be treated as material, not cosmetic.**
   advice existed — which silently disabled escalation for that round, letting a
   worker mute the advisor by asking anything at all.
 - **Unbounded history.** `board.history` grows without pruning.
+- **Researcher spawned eagerly.** The advisor is spawned on demand; the
+  researcher is not, because agents reach it by plain `intercom`, which the
+  extension does not mediate. See [§4.1](crew.md#service-roles).
 
 ## 7.6 References
 
