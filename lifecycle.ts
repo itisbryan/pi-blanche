@@ -19,7 +19,7 @@ import type { Board, CheckpointInput, Role } from "./types.ts";
 type Deps = { channel: () => any; liveSessions: () => Promise<string[]> };
 const observedPaneIds = async (): Promise<string[] | undefined> => {
 	try {
-		const raw = await runHerdr(["pane", "list", "--json"]);
+		const raw = await runHerdr(["pane", "list"]);
 		const ids: string[] = [];
 		const visit = (value: any): void => {
 			if (Array.isArray(value)) {
