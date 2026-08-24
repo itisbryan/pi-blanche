@@ -294,6 +294,13 @@ config:
 Before treating this as inherent, try a different advisor model. A ceiling
 measured on a single profile is a measurement, not a law.
 
+If that experiment runs, the success bar is the **loop completing** — a
+consultation recorded, `lastAdvisorConsultedRound` advancing, and
+`VERIFY`→`DONE` reached. Not the advisor replying. An advisor that answers
+conversationally without calling `consult` looks like progress and is the same
+stall, which is the effect-versus-belief distinction that every real defect in
+[§7.2](#72-three-defects-that-passed-a-green-suite) turned on.
+
 Three role prompts and one delivery-content change were spent discovering this.
 The pattern each time was identical — a role treats an inbound handoff as
 conversation rather than an instruction — which is the same shape as the
