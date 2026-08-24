@@ -19,8 +19,16 @@ export const taskRoot = (cwd = join(homedir(), ".pi/agent/pi-blanche/tasks")) =>
 // starts. Resolve here so every call site agrees.
 export const currentRole = (): Role => (process.env.BLANCHE_ROLE as Role) ?? "leader";
 
-export const currentTaskId = (cwd = process.cwd()): string | undefined =>
-	process.env.BLANCHE_TASK ?? listTasks(cwd)[0]?.id;
+export const currentTaskId = (cwd = process.cwd()): string | undefined => {
+	if (process.env.BLANCHE_TASK) return process.env.BLANCHE_TASK;
+	const candidates = listTasks(cwd);
+	if (candidates.length > 1) {
+		throw new Error(
+			`Multiple tasks in this directory: ${candidates.map((task) => task.id).join(", ")}. Pass one explicitly: /crew <action> <id>.`,
+		);
+	}
+	return candidates[0]?.id;
+};
 
 export function taskDir(id: string) {
 	return join(taskRoot(), id);
