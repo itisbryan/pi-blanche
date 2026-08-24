@@ -370,6 +370,60 @@ test("keeps Unicode and ASCII tracer frames fixed-width and color-independent", 
 	}
 });
 
+test("animates a fixed-width tracer toward the next phase edge", () => {
+	for (const glyphs of ["unicode", "ascii"] as const) {
+		const mounted = mount(snapshot(), { glyphs });
+		const text = stripAnsi(mounted.component.render(60).join("\n"));
+		assert.match(text, glyphs === "unicode" ? /●[─-]+[▶>]/ : /o[-]+>/);
+	}
+});
+
+test("keeps a handoff transition in flight before settling once", () => {
+	const mounted = mount(snapshot());
+	mounted.component.render(60);
+	const handoff: WidgetSnapshot = {
+		...snapshot({
+			phase: "IMPLEMENTING",
+			owner: "worker",
+			sessions: { worker: { sessionName: "ft-feat-widget-worker", contextEpoch: 0 } },
+			history: [
+				{
+					handoffId: "handoff-duration",
+					from: "planner",
+					to: "worker",
+					phase: "IMPLEMENTING",
+					verdict: null,
+					sentAt: 2,
+				},
+			],
+		}),
+		liveRoster: [{ name: "ft-feat-widget-leader" }, { name: "ft-feat-widget-worker" }],
+	};
+	mounted.component.update(handoff);
+	const initial = mounted.component.render(60).join("\n");
+	assert.match(stripAnsi(initial), /HANDOFF/);
+	assert.match(stripAnsi(initial), /WORKER/);
+	assert.match(initial, ansiCode("34"));
+	mounted.clock.run(160);
+	assert.match(stripAnsi(mounted.component.render(60).join("\n")), /HANDOFF/);
+	for (let index = 0; index < 9; index++) mounted.clock.run(160);
+	assert.doesNotMatch(stripAnsi(mounted.component.render(60).join("\n")), /HANDOFF/);
+});
+
+test("uses theme tokens for rework emphasis instead of baked ANSI colors", () => {
+	const customTheme: Theme = {
+		accent: (text) => `\u001b[32m${text}\u001b[0m`,
+		warning: (text) => `\u001b[32m${text}\u001b[0m`,
+		error: (text) => `\u001b[35m${text}\u001b[0m`,
+	};
+	const positive = mount(snapshot({ reworkRound: 2 }), { theme: () => customTheme });
+	assert.match(positive.component.render(60).join("\n"), ansiCode("32"));
+	assert.doesNotMatch(positive.component.render(60).join("\n"), ansiCode("37"));
+	const maximum = mount(snapshot({ reworkRound: 4 }), { theme: () => customTheme });
+	assert.match(maximum.component.render(60).join("\n"), ansiCode("35"));
+	assert.doesNotMatch(maximum.component.render(60).join("\n"), ansiCode("91"));
+});
+
 test("schedules one unref'd timer only for active live work", () => {
 	const active = mount(snapshot());
 	active.component.render(60);
