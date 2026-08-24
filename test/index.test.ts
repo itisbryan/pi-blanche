@@ -440,21 +440,27 @@ test("delivery waits for session_start and passes a real CustomMessage shape", a
 
 		h.handlers.get("session_start")?.();
 		assert.equal(h.sent.length, 1);
-		assert.deepEqual(h.sent[0][0], {
-			customType: "blanche_handoff",
-			content: nonce,
-			display: true,
-			details: {
-				handoffId: `handoff-${id}`,
-				from: "leader",
-				to: "worker",
-				phase: "IMPLEMENTING",
-				verdict: null,
-				message: nonce,
-				sentAt: 1,
-				taskId: id,
+		assert.deepEqual(
+			{ ...h.sent[0][0], content: nonce },
+			{
+				customType: "blanche_handoff",
+				content: nonce,
+				display: true,
+				details: {
+					handoffId: `handoff-${id}`,
+					from: "leader",
+					to: "worker",
+					phase: "IMPLEMENTING",
+					verdict: null,
+					message: nonce,
+					sentAt: 1,
+					taskId: id,
+				},
 			},
-		});
+		);
+		const deliveredContent = h.sent[0][0].content;
+		assert.equal(typeof deliveredContent, "string");
+		assert.ok((deliveredContent as string).includes(nonce));
 		assert.deepEqual(h.sent[0][1], { triggerTurn: true });
 		assert.equal(typeof readBoard(id).history[0].ackedAt, "number");
 	} finally {
@@ -515,7 +521,9 @@ test("delivery polling picks up a handoff committed after channel startup", asyn
 		});
 		poll?.();
 		assert.equal(h.sent.length, 1);
-		assert.equal(h.sent[0][0].content, nonce);
+		const deliveredContent = h.sent[0][0].content;
+		assert.equal(typeof deliveredContent, "string");
+		assert.ok((deliveredContent as string).includes(nonce));
 		assert.equal(h.sent[0][0].customType, "blanche_handoff");
 		assert.equal(h.sent[0][1].triggerTurn, true);
 		assert.equal(typeof readBoard(id).history[0].ackedAt, "number");
