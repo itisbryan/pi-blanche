@@ -26,8 +26,8 @@ role rows + bottom rail is exactly ten lines, the widget's hard design budget.
 Wide presentation:
 
 ```text
-╭─ BLANCHE · QUICK · 01 REQUESTED ─●─> 02 IMPLEMENTING/worker ─╮
-├─ CREW · quick-mt6xeq2p ──────────────────────────────────────┤
+╭─ BLANCHE · FEAT · 01 REQUESTED ─●─> 02 DISCOVERY/planner ────╮
+├─ CREW · mb-mt6xeq2p ─────────────────────────────────────────┤
 │ > YOU · LEADER                         owner · live          │
 │   PLANNER                                      not started   │
 │   RESEARCHER                                   not started   │
