@@ -191,6 +191,25 @@ test("operator kickoff records exactly one opening handoff for every workflow", 
 	}
 });
 
+test("kickoff diagnoses missing pi-intercom before creating a task", async () => {
+	const oldCwd = process.cwd();
+	const cwd = mkdtempSync(join(tmpdir(), "blanche-no-intercom-"));
+	process.chdir(cwd);
+	const h = harness();
+	try {
+		blancheExtension(h.pi);
+		const command = h.commands.get("crew");
+		assert.ok(command);
+		await assert.rejects(
+			() => command('quick "no broker"', {}),
+			/needs pi-intercom.*pi install npm:pi-intercom/,
+		);
+		assert.equal(listTasks(cwd).length, 0, "missing intercom must create no task");
+	} finally {
+		process.chdir(oldCwd);
+	}
+});
+
 test("kickoff refuses an active same-cwd crew without creating anything, then allows stop and clean recovery", async () => {
 	const oldTask = process.env.BLANCHE_TASK;
 	const oldRole = process.env.BLANCHE_ROLE;
