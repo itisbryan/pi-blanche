@@ -526,7 +526,7 @@ test("delivery waits for session_start and passes a real CustomMessage shape", a
 test("handoff delivery gives literal next-step, advisor, and fallback instructions", async () => {
 	const oldTask = process.env.BLANCHE_TASK;
 	const oldRole = process.env.BLANCHE_ROLE;
-	const capture = async (id: string, target: "worker" | "advisor"): Promise<string> => {
+	const capture = async (id: string, target: "leader" | "worker" | "advisor"): Promise<string> => {
 		process.env.BLANCHE_TASK = id;
 		process.env.BLANCHE_ROLE = target;
 		const h = harness();
@@ -577,6 +577,41 @@ test("handoff delivery gives literal next-step, advisor, and fallback instructio
 		const next = await capture("delivery-next-phase", "worker");
 		assert.match(next, /On success, hand off to qa with phase QA\./);
 		assert.match(next, /If you cannot, hand off to leader with the reason\./);
+
+		createTask({
+			id: "delivery-leader-progress",
+			workflow: "hotfix",
+			title: "delivery-leader-progress",
+			description: "leader progression",
+			cwd: process.cwd(),
+			resolved: {
+				...resolved("worker"),
+				phases: [
+					{ name: "TRIAGE", owner: "leader" },
+					{ name: "LEADER_REVIEW", owner: "leader" },
+					{ name: "DONE", owner: "leader" },
+				],
+			},
+			prefix: "hf",
+			phase: "LEADER_REVIEW",
+			owner: "leader",
+			leader: { sessionName: "e2e-leader" },
+		});
+		updateBoard("delivery-leader-progress", (board) => {
+			board.history.push({
+				handoffId: "handoff-delivery-leader-progress",
+				from: "worker",
+				to: "leader",
+				phase: "LEADER_REVIEW",
+				verdict: null,
+				message: "review",
+				sentAt: 1,
+			});
+		});
+		const leaderProgress = await capture("delivery-leader-progress", "leader");
+		assert.match(leaderProgress, /On success, advance to phase DONE by handing off to leader/);
+		assert.match(leaderProgress, /do not hand off while remaining in phase LEADER_REVIEW/);
+		assert.doesNotMatch(leaderProgress, /Do not hand off to leader\./);
 
 		createTask({
 			id: "delivery-advisor-instruction",
