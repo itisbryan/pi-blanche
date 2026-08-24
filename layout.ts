@@ -59,10 +59,8 @@ const move = (target: string, pane: string) => [
 	pane,
 	"--no-focus",
 ];
-// Herdr keeps the split target's ratio; repeated splits of the same target
-// therefore retain equal rows with (n-1)/n, (n-2)/(n-1), ..., 1/2.
 export const rowSplitRatios = (count: number) =>
-	Array.from({ length: Math.max(0, count - 1) }, (_, index) => (count - index - 1) / (count - index));
+	Array.from({ length: Math.max(0, count - 1) }, (_, index) => 1 / (count - index));
 export function planRows(stackPaneId: string, roles: Role[]) {
 	const commands: string[][] = [];
 	for (const ratio of rowSplitRatios(roles.length)) commands.push(split(stackPaneId, "down", ratio));
