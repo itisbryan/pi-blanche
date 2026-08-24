@@ -24,7 +24,8 @@ export function createCrewWidget(
 		frame = 0,
 		previous = "",
 		disposed = false,
-		handoffId: string | undefined;
+		handoffId: string | undefined,
+		transitionActive = false;
 	const glyph =
 		opts.glyphs === "ascii"
 			? { tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", dot: "o", arrow: ">" }
@@ -48,7 +49,6 @@ export function createCrewWidget(
 		);
 	const render = (width: number) => {
 		if (width < 24) return [fit(`${snap.board.phase} ${snap.board.owner}`, width)];
-		if (frame >= 10) previous = "";
 		const b = snap.board,
 			t = snap.board.resolved,
 			lines: string[] = [];
@@ -64,8 +64,7 @@ export function createCrewWidget(
 		if (b.reworkRound > 0)
 			status += ` ${color(b.reworkRound >= b.resolved.maxRework ? "error" : "warning", `rework ${b.reworkRound}/${b.resolved.maxRework}`)}`;
 		const last = b.history.at(-1);
-		if (previous || (last && last.phase !== b.phase) || (last && last.handoffId === handoffId))
-			status += ` ${color("borderAccent", `HANDOFF ${last?.to ?? ""}`)}`;
+		if (transitionActive) status += ` ${color("borderAccent", `HANDOFF ${last?.to ?? ""}`)}`;
 		lines.push(fit(status, width));
 		const roster = ["leader", ...(t.roster.length ? t.roster : roles)] as Role[];
 		for (const role of roster) {
@@ -128,10 +127,12 @@ export function createCrewWidget(
 				snap = next;
 				if (next.board.history.at(-1)?.handoffId !== old) {
 					previous = "HANDOFF";
+					transitionActive = true;
 					handoffId = next.board.history.at(-1)?.handoffId;
 					if (opts.clock?.setTimeout)
 						transitionTimer = opts.clock.setTimeout(() => {
 							previous = "";
+							transitionActive = false;
 							handoffId = undefined;
 						}, 1500);
 				}
