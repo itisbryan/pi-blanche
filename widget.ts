@@ -7,7 +7,12 @@ type Snapshot = {
 };
 type Theme = Record<string, (s: string) => string>;
 type Timer = { unref?: () => void };
-type Clock = { setInterval: (f: () => void, n: number) => Timer; clearInterval: (t: Timer) => void };
+type Clock = {
+	setInterval: (f: () => void, n: number) => Timer;
+	clearInterval: (t: Timer) => void;
+	setTimeout?: (f: () => void, n: number) => Timer;
+	clearTimeout?: (t: Timer) => void;
+};
 const roles: Role[] = ["planner", "researcher", "advisor", "worker", "qa", "verifier"];
 export function createCrewWidget(
 	initial: Snapshot,
@@ -15,8 +20,10 @@ export function createCrewWidget(
 ) {
 	let snap = initial,
 		timer: Timer | undefined,
+		transitionTimer: Timer | undefined,
 		frame = 0,
-		previous = "";
+		previous = "",
+		handoffId: string | undefined;
 	const glyph =
 		opts.glyphs === "ascii"
 			? { tl: "+", tr: "+", bl: "+", br: "+", h: "-", v: "|", dot: "o", arrow: ">" }
@@ -48,11 +55,11 @@ export function createCrewWidget(
 		lines.push(fit(color("accent", title), width));
 		const idx = t.phases.findIndex((p) => p.name === b.phase);
 		const next = idx >= 0 ? t.phases[idx + 1] : undefined;
-		let status = `${String(idx + 1).padStart(2, "0")} ${b.phase} ${glyph.dot} ${next ? `${glyph.arrow} ${next.name}` : idx < 0 ? "" : "complete"}`;
+		let status = `${String(idx + 1).padStart(2, "0")} ${b.phase} ${glyph.dot}${glyph.h.repeat(3)}${glyph.arrow} ${next ? next.name : idx < 0 ? "" : "complete"}`;
 		if (b.reworkRound > 0)
-			status += ` ${b.reworkRound >= b.resolved.maxRework ? `\u001b[91mrework ${b.reworkRound}/${b.resolved.maxRework}\u001b[0m` : `\u001b[37mrework ${b.reworkRound}/${b.resolved.maxRework}\u001b[0m`}`;
+			status += ` ${color(b.reworkRound >= b.resolved.maxRework ? "error" : "warning", `rework ${b.reworkRound}/${b.resolved.maxRework}`)}`;
 		const last = b.history.at(-1);
-		if (previous || (last && last.phase !== b.phase))
+		if (previous || (last && last.phase !== b.phase) || (last && last.handoffId === handoffId))
 			status += ` ${color("borderAccent", `HANDOFF ${last?.to ?? ""}`)}`;
 		lines.push(fit(`${glyph.tl === "╭" ? "├─" : "+-"} CREW ${status}`, width));
 		const roster = ["leader", ...(t.roster.length ? t.roster : roles)] as Role[];
@@ -112,13 +119,23 @@ export function createCrewWidget(
 			if (changed) {
 				const old = snap.board.history.at(-1)?.handoffId;
 				snap = next;
-				if (next.board.history.at(-1)?.handoffId !== old) previous = "HANDOFF";
+				if (next.board.history.at(-1)?.handoffId !== old) {
+					previous = "HANDOFF";
+					handoffId = next.board.history.at(-1)?.handoffId;
+					if (opts.clock?.setTimeout)
+						transitionTimer = opts.clock.setTimeout(() => {
+							previous = "";
+							handoffId = undefined;
+						}, 1500);
+				}
 			}
 			ensureTimer();
 		},
 		dispose() {
 			if (timer && opts.clock) opts.clock.clearInterval(timer);
+			if (transitionTimer && opts.clock?.clearTimeout) opts.clock.clearTimeout(transitionTimer);
 			timer = undefined;
+			transitionTimer = undefined;
 		},
 	};
 }
