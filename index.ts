@@ -17,9 +17,9 @@ import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
 import { registerLifecycle } from "./lifecycle.ts";
-import { createCrewWidget } from "./widget.ts";
 import { spawnRole } from "./spawn.ts";
 import type { Board, HandoffDecision, Role } from "./types.ts";
+import { createCrewWidget } from "./widget.ts";
 
 const namespace = "blanche/v1";
 const closePane = (paneId: string): Promise<void> =>
