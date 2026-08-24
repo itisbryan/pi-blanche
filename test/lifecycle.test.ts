@@ -152,6 +152,9 @@ test("resume repairs layout with a persisted leader pane but decouples state wit
 		herdr,
 		`#!/bin/sh
 printf '%s\\n' "$*" >> "$HERDR_TEST_LOG"
+case "$*" in
+  *"--json"*) printf '%s\\n' 'unsupported flag: --json' >&2; exit 2 ;;
+esac
 case "$1 $2" in
   "pane list") printf '%s\\n' '{"result":{"layout":{"panes":[]}}}' ;;
   "pane split") printf '%s\\n' '{"result":{"pane":{"pane_id":"created-pane"}}}' ;;
@@ -170,7 +173,7 @@ esac
 		const resumed: any = await repairHarness.command(`resume ${id}`);
 		const calls = readFileSync(herdrLog, "utf8").trim().split(/\r?\n/);
 		assert.equal(resumed.status, "active");
-		assert.ok(calls.includes("pane list --json"), calls.join(" | "));
+		assert.ok(calls.includes("pane list"), calls.join(" | "));
 		assert.ok(
 			calls.some((call) => call.includes(`pane split --pane ${leaderPaneId}`) && call.includes("--no-focus")),
 		);
