@@ -103,7 +103,7 @@ test("unknown phase falls back to the destination as owner", () => {
 
 // --- failure cases ---
 
-test("self-handoffs reject before liveness, verdict, or mutation", () => {
+test("same-phase self-handoffs reject before liveness, verdict, or mutation", () => {
 	for (const [from, to, expected] of [
 		["leader", "leader", /ask the user for the missing input/],
 		["worker", "worker", /Cannot hand off 'worker' to itself/],
@@ -122,6 +122,39 @@ test("self-handoffs reject before liveness, verdict, or mutation", () => {
 		assert.equal(r.ok, false);
 		if (!r.ok) assert.match(r.error, expected);
 		assert.deepEqual(before, mkBoard(), `${from} self-handoff must not mutate the board`);
+	}
+});
+
+test("same-role handoff is allowed when it advances the phase", () => {
+	const base = mkBoard();
+	const board = mkBoard({
+		phase: "INVESTIGATING",
+		owner: "researcher",
+		resolved: {
+			...base.resolved,
+			roster: [...base.resolved.roster, "researcher"],
+			phases: [
+				{ name: "INVESTIGATING", owner: "researcher" },
+				{ name: "REPORT", owner: "researcher" },
+			],
+		},
+		sessions: { ...base.sessions, researcher: { sessionName: "r", contextEpoch: 0 } },
+	});
+	const r = decideHandoff({
+		board,
+		from: "researcher",
+		to: "researcher",
+		phase: "REPORT",
+		verdict: null,
+		liveSessions: [...live, "r"],
+		now: 1,
+		handoffId: "progressing-self",
+	} as any);
+	assert.equal(r.ok, true);
+	if (r.ok) {
+		assert.equal(r.target, "r");
+		assert.equal(r.board.phase, "REPORT");
+		assert.equal(r.board.owner, "researcher");
 	}
 });
 
