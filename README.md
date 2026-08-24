@@ -1,5 +1,7 @@
 # pi-blanche
 
+[![CI](https://github.com/itisbryan/pi-blanche/actions/workflows/ci.yml/badge.svg)](https://github.com/itisbryan/pi-blanche/actions/workflows/ci.yml)
+
 Spin up a crew of [pi](https://github.com/badlogic/pi-mono) sessions — planner,
 researcher, advisor, worker, qa, verifier — each in its own
 [herdr](https://herdr.dev) pane, on its own model and reasoning budget,

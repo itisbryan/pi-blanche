@@ -2,5 +2,5 @@
 	"$schema": "https://biomejs.dev/schemas/2.5.10/schema.json",
 	"files": { "includes": ["**/*.ts", "**/*.json", "!node_modules", "!package-lock.json"] },
 	"formatter": { "enabled": true, "indentStyle": "tab", "lineWidth": 110 },
-	"linter": { "enabled": true, "rules": { "recommended": true } }
+	"linter": { "enabled": true }
 }
