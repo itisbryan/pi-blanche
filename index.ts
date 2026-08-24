@@ -224,7 +224,7 @@ export default function blancheExtension(pi: any): void {
 		// injects nothing, which is why handoffs acked but no turn ever ran.
 		const actionLines = [
 			`[blanche] You are now ${payload.to} for ${payload.taskId}, phase ${payload.phase}${payload.spec ? `, spec ${payload.spec}` : ""}.`,
-			"This is work, not conversation. Complete this phase, then end your turn by calling handoff(...). If you cannot, handoff to leader with the reason.",
+			`This is work, not conversation. Complete this phase, then end your turn by calling handoff(...). ${payload.to === "leader" ? "If blocked, stop and ask the user for the missing input. Do not hand off to leader." : "If you cannot, handoff to leader with the reason."}`,
 			...(payload.verdict ? [`Incoming verdict: ${payload.verdict}`] : []),
 			...(payload.to === "advisor"
 				? ["ACTION REQUIRED: call consult first, then handoff your advice back to the worker."]
