@@ -23,6 +23,7 @@ export function createCrewWidget(
 		transitionTimer: Timer | undefined,
 		frame = 0,
 		previous = "",
+		disposed = false,
 		handoffId: string | undefined;
 	const glyph =
 		opts.glyphs === "ascii"
@@ -51,17 +52,21 @@ export function createCrewWidget(
 		const b = snap.board,
 			t = snap.board.resolved,
 			lines: string[] = [];
-		const title = `${glyph.tl}${glyph.h} BLANCHE · ${b.workflow.toUpperCase()} ${glyph.h} ${b.id} ${glyph.tr}`;
-		lines.push(fit(color("accent", title), width));
 		const idx = t.phases.findIndex((p) => p.name === b.phase);
 		const next = idx >= 0 ? t.phases[idx + 1] : undefined;
-		let status = `${String(idx + 1).padStart(2, "0")} ${b.phase} ${glyph.dot}${glyph.h.repeat(3)}${glyph.arrow} ${next ? next.name : idx < 0 ? "" : "complete"}`;
+		const nextOwner = next?.owner ?? "";
+		const traceWidth = 5,
+			pos = frame % (traceWidth + 1);
+		const tracer = glyph.h.repeat(pos) + glyph.dot + glyph.h.repeat(traceWidth - pos) + glyph.arrow;
+		const title = `${glyph.tl}${glyph.h} BLANCHE · ${b.workflow.toUpperCase()} · ${b.phase} ${tracer} ${next ? `${next.name}/${nextOwner}` : idx < 0 ? "" : "complete"} ${glyph.tr}`;
+		lines.push(fit(color("accent", title), width));
+		let status = `${glyph.tl === "╭" ? "├─" : "+-"} CREW · ${b.id}`;
 		if (b.reworkRound > 0)
 			status += ` ${color(b.reworkRound >= b.resolved.maxRework ? "error" : "warning", `rework ${b.reworkRound}/${b.resolved.maxRework}`)}`;
 		const last = b.history.at(-1);
 		if (previous || (last && last.phase !== b.phase) || (last && last.handoffId === handoffId))
 			status += ` ${color("borderAccent", `HANDOFF ${last?.to ?? ""}`)}`;
-		lines.push(fit(`${glyph.tl === "╭" ? "├─" : "+-"} CREW ${status}`, width));
+		lines.push(fit(status, width));
 		const roster = ["leader", ...(t.roster.length ? t.roster : roles)] as Role[];
 		for (const role of roster) {
 			const session = role === "leader" ? b.leader.sessionName : b.sessions[role]?.sessionName;
@@ -75,7 +80,7 @@ export function createCrewWidget(
 				: role === "advisor"
 					? "on demand"
 					: "not started";
-			const owner = b.owner === role ? "owner" : "";
+			const owner = b.owner === role ? "> owner" : "";
 			const label = you ? "YOU" : role === "leader" ? "OPERATOR" : "";
 			lines.push(
 				fit(
@@ -88,7 +93,7 @@ export function createCrewWidget(
 			);
 		}
 		lines.push(fit(`${glyph.bl}${glyph.h.repeat(Math.max(1, width - 2))}${glyph.br}`, width));
-		while (lines.length > 10) lines.splice(lines.length - 2, 1);
+		if (lines.length > 10) return [fit(`${b.phase} ${b.owner} ${b.id}`, width)];
 		while (lines.length < 3) lines.push(fit(`${glyph.v}`, width));
 		return lines.map((x) => fit(x, width));
 	};
@@ -109,12 +114,14 @@ export function createCrewWidget(
 	};
 	return {
 		render(width: number) {
+			if (disposed) return [];
 			ensureTimer();
 			const out = render(width);
 			if (frame % 2) out[1] = out[1]?.replace(glyph.dot, glyph.dot === "●" ? "○" : "O") ?? out[1];
 			return out;
 		},
 		update(next: Snapshot) {
+			if (disposed) return;
 			const changed = JSON.stringify(next) !== JSON.stringify(snap);
 			if (changed) {
 				const old = snap.board.history.at(-1)?.handoffId;
