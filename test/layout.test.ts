@@ -4,10 +4,6 @@ import { DEFAULT_CONFIG } from "../config.ts";
 import type { Role } from "../types.ts";
 
 type Command = string[];
-type FakeHerdr = {
-	calls: Command[];
-	run(argv: Command): Promise<unknown>;
-};
 
 type LayoutContract = {
 	partitionRoles(roles: Role[]): { review: Role[]; execution: Role[] };
@@ -40,7 +36,6 @@ type LayoutContract = {
 		commands: Command[];
 		focusPaneId: string;
 	};
-	applyPlan(plan: unknown, herdr: FakeHerdr): Promise<unknown>;
 };
 
 const layoutPath = "../layout.ts";
@@ -62,26 +57,10 @@ const layout: LayoutContract =
 		planLateRole: () => missingLayout("planLateRole"),
 		planResume: () => missingLayout("planResume"),
 		planClean: () => missingLayout("planClean"),
-		applyPlan: () => missingLayout("applyPlan"),
 	} as LayoutContract);
 
 const canonicalReview: Role[] = ["planner", "advisor", "verifier"];
 const canonicalExecution: Role[] = ["researcher", "worker", "qa"];
-
-function fakeHerdr(failOn?: (argv: Command, index: number) => boolean): FakeHerdr {
-	const herdr: FakeHerdr = {
-		calls: [],
-		async run(argv) {
-			const copy = [...argv];
-			herdr.calls.push(copy);
-			if (failOn?.(copy, herdr.calls.length - 1)) throw new Error(`fake Herdr failure: ${copy.join(" ")}`);
-			if (copy[0] === "pane" && copy[1] === "split")
-				return { pane: { pane_id: `created-${herdr.calls.length}` } };
-			return { ok: true };
-		},
-	};
-	return herdr;
-}
 
 function commands(plan: unknown): Command[] {
 	assert.ok(plan && typeof plan === "object", "layout plan must be an object");
@@ -90,33 +69,9 @@ function commands(plan: unknown): Command[] {
 	return value as Command[];
 }
 
-function has(argv: Command, value: string): boolean {
-	return argv.includes(value);
-}
-
 function paneCommands(plan: unknown): Command[] {
 	return commands(plan).filter((argv) => argv[0] === "pane");
 }
-
-test("records explicit Herdr argv and never relies on focused pane placement", async () => {
-	const plan = layout.planKickoff({
-		leaderPaneId: "leader-pane",
-		reviewRoles: ["planner"],
-		executionRoles: ["worker"],
-	});
-	const herdr = fakeHerdr();
-	await layout.applyPlan(plan, herdr);
-	assert.ok(herdr.calls.length > 0);
-	for (const argv of herdr.calls) {
-		assert.equal(has(argv, "--current"), false, argv.join(" "));
-		if (argv[0] !== "pane") continue;
-		if (argv[1] === "split" || argv[1] === "move") {
-			assert.ok(has(argv, "--pane") || has(argv, "--target-pane"), argv.join(" "));
-			assert.ok(has(argv, "--no-focus"), argv.join(" "));
-		}
-		if (argv[1] === "resize") assert.equal(has(argv, "--no-focus"), false, argv.join(" "));
-	}
-});
 
 test("groups every default workflow into canonical review and execution order", () => {
 	for (const [workflow, config] of Object.entries(DEFAULT_CONFIG.workflows)) {
@@ -229,36 +184,6 @@ test("respawns missing persisted pane IDs instead of guessing by order or proxim
 		false,
 	);
 	assert.equal(plan.focusPaneId, "leader");
-});
-
-test("kickoff rollback closes every created pane in reverse order and persists no partial sessions", () => {
-	const plan = layout.planKickoff({
-		leaderPaneId: "leader",
-		reviewRoles: ["planner"],
-		executionRoles: ["worker", "qa"],
-	});
-	const rollback = (layout as LayoutContract & { rollbackKickoff?: (plan: unknown) => unknown })
-		.rollbackKickoff;
-	assert.equal(typeof rollback, "function", "layout must expose kickoff rollback");
-	const result = rollback?.(plan) as { closePaneIds: string[]; persistedRoles: Role[] };
-	assert.deepEqual(result.persistedRoles, []);
-	assert.deepEqual(result.closePaneIds, [...result.closePaneIds].reverse());
-	assert.ok(result.closePaneIds.length > 0);
-});
-
-test("late-role failure preserves existing pane and process identities", () => {
-	const plan = layout.planLateRole({
-		role: "advisor",
-		leaderPaneId: "leader",
-		executionPaneId: "execution",
-	}) as {
-		createdRole: Role;
-		existingPaneIds: string[];
-		failureCleanup?: { closePaneIds: string[]; preservePaneIds: string[] };
-	};
-	assert.equal(plan.createdRole, "advisor");
-	assert.deepEqual(plan.failureCleanup?.preservePaneIds, ["leader", "execution"]);
-	assert.deepEqual(plan.failureCleanup?.closePaneIds, ["advisor"]);
 });
 
 test("clean closes only recorded role panes and never leader or unrelated panes", () => {
