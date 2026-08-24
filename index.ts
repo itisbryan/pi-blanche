@@ -106,6 +106,10 @@ export default function blancheExtension(pi: any): void {
 	};
 	const liveSessions = async (): Promise<string[]> =>
 		channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
+	// ponytail: spawn-then-record reads a stale board, so two concurrent
+	// escalations could spawn duplicate advisor panes and leak the unrecorded
+	// one. Foreclosed by maxWorkers:1 today. Upgrade path: claim the session
+	// slot under the board lock before spawning, or dedupe on a live broker-name check.
 	const ensureRole = async (b: Board, target: Role): Promise<void> => {
 		if (b.sessions[target]) return;
 		const launched = await spawnRole({
