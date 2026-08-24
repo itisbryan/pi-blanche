@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -102,11 +102,13 @@ function restoreEnv(name: string, value: string | undefined) {
 	else process.env[name] = value;
 }
 
-function paneRuns() {
+function herdrCalls() {
 	if (!existsSync(process.env.HERDR_STUB_LOG!)) return [];
-	return readFileSync(process.env.HERDR_STUB_LOG!, "utf8")
-		.split("\n")
-		.filter((line) => line.startsWith("pane run "));
+	return readFileSync(process.env.HERDR_STUB_LOG!, "utf8").split("\n").filter(Boolean);
+}
+
+function paneRuns() {
+	return herdrCalls().filter((line) => line.startsWith("pane run "));
 }
 
 test("operator kickoff records exactly one opening handoff for every workflow", async () => {
@@ -150,9 +152,21 @@ test("operator kickoff records exactly one opening handoff for every workflow", 
 					.map((phase) => phase.owner),
 			);
 			if (config.workflows[workflow].roles.includes("researcher")) expectedEager.add("researcher");
+			const beforeCalls = herdrCalls().length;
 			const beforeRuns = paneRuns().length;
 			const message = await command(`${workflow} "${description}"`, {});
+			const emitted = herdrCalls().slice(beforeCalls);
 			assert.equal(paneRuns().length - beforeRuns, expectedEager.size, `${workflow} eager pane count`);
+			for (const call of emitted) {
+				const ratio = /(?:^| )--ratio ([^ ]+)/.exec(call)?.[1];
+				if (ratio !== undefined) {
+					const value = Number(ratio);
+					assert.ok(
+						Number.isFinite(value) && value > 0 && value < 1,
+						`${workflow} emitted invalid ratio ${ratio}`,
+					);
+				}
+			}
 			assert.match(message, /work handed over/);
 			const board = readBoard(id);
 			const opening = config.workflows[workflow].phases.find((phase) => phase.owner !== "leader");
@@ -207,6 +221,51 @@ test("kickoff diagnoses missing pi-intercom before creating a task", async () =>
 		assert.equal(listTasks(cwd).length, 0, "missing intercom must create no task");
 	} finally {
 		process.chdir(oldCwd);
+	}
+});
+
+test("kickoff failure rolls back the task and any opened panes", async () => {
+	const oldCwd = process.cwd();
+	const oldHerdr = process.env.HERDR_BIN;
+	const oldLog = process.env.HERDR_STUB_LOG;
+	const cwd = mkdtempSync(join(tmpdir(), "blanche-kickoff-rollback-"));
+	const failingHerdr = join(cwd, "failing-herdr.sh");
+	const log = join(cwd, "failing-herdr.log");
+	writeFileSync(
+		failingHerdr,
+		`#!/bin/sh
+printf '%s\\n' "$*" >> "$HERDR_STUB_LOG"
+case "$1 $2" in
+  "pane current") printf '%s\\n' '{"result":{"pane":{"pane_id":"leader-pane"}}}' ;;
+  "pane split") exit 1 ;;
+  "pane close") printf '%s\\n' '{"result":{"ok":true}}' ;;
+  *) printf '%s\\n' '{"result":{"ok":true}}' ;;
+esac
+`,
+	);
+	chmodSync(failingHerdr, 0o755);
+	process.chdir(cwd);
+	process.env.HERDR_BIN = failingHerdr;
+	process.env.HERDR_STUB_LOG = log;
+	try {
+		const h = harness();
+		blancheExtension(h.pi);
+		const registration = h.getRegistration();
+		assert.ok(registration);
+		registration.onReady({ listSessions: async () => [], publish() {} });
+		const command = h.commands.get("crew");
+		assert.ok(command);
+		await assert.rejects(() => command('quick "deliberately fail kickoff"', {}), /Crew kickoff failed/);
+		assert.equal(listTasks(cwd).length, 0, "failed kickoff must not leave an active task");
+		assert.equal(existsSync(join(cwd, ".pi", "agent", "pi-blanche", "tasks")), false);
+	} finally {
+		process.chdir(oldCwd);
+		if (oldHerdr === undefined) delete process.env.HERDR_BIN;
+		else process.env.HERDR_BIN = oldHerdr;
+		if (oldLog === undefined) delete process.env.HERDR_STUB_LOG;
+		else process.env.HERDR_STUB_LOG = oldLog;
+		rmSync(failingHerdr, { force: true });
+		rmSync(log, { force: true });
 	}
 });
 
