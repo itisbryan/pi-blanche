@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createTask, currentRole, currentTaskId, listTasks, readBoard, taskDir, updateBoard } from "./board.ts";
-import { loadConfig, resolveCrew } from "./config.ts";
+import { loadConfig, resolveCrew, serviceRoles } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
 import { registerLifecycle } from "./lifecycle.ts";
@@ -52,6 +52,7 @@ export default function blancheExtension(pi: any): void {
 	// Shared by the handoff tool and by kickoff's opening handoff.
 	const sendHandoff = async (b: Board, from: Role, input: any): Promise<string[]> => {
 		const handoffId = randomUUID();
+		if (input.to !== "leader") await ensureRole(b, input.to);
 		const live = await liveSessions();
 		let decision: HandoffDecision | undefined;
 		updateBoard(b.id, (fresh) => {
@@ -68,6 +69,9 @@ export default function blancheExtension(pi: any): void {
 			decision = next;
 		});
 		if (!decision?.ok) throw new Error("Handoff decision was not produced.");
+		if (decision.notes.some((note) => note.toLowerCase().includes("advisor"))) {
+			await ensureRole(b, "advisor");
+		}
 		channel?.publish({
 			taskId: b.id,
 			handoffId,
@@ -91,6 +95,21 @@ export default function blancheExtension(pi: any): void {
 	};
 	const liveSessions = async (): Promise<string[]> =>
 		channel ? (await channel.listSessions()).map((s: any) => s.name).filter(Boolean) : [];
+	const ensureRole = async (b: Board, target: Role): Promise<void> => {
+		if (b.sessions[target]) return;
+		const launched = await spawnRole({
+			role: target,
+			board: b,
+			profile: b.resolved.agents[target],
+			cwd: b.cwd,
+			liveSessions,
+		});
+		updateBoard(b.id, (fresh) => {
+			if (!fresh.sessions[target]) {
+				fresh.sessions[target] = { ...launched, contextEpoch: 0 };
+			}
+		});
+	};
 
 	// pi.sendMessage is a no-op until the session is actually running, and the
 	// channel becomes ready during startup — so an early delivery would be
@@ -311,8 +330,15 @@ export default function blancheExtension(pi: any): void {
 				leader: { sessionName: leaderName },
 			});
 			const openedPanes: string[] = [];
+			// ponytail: only the advisor is lazy — its trigger is the advisorAfter nudge.
+			// The researcher is reached by plain intercom, which we do not intercept, so
+			// lazy-spawning it would advertise a peer with no session behind it.
+			const service = new Set(serviceRoles(crew));
+			const eagerRoles = new Set(crew.phases.map((phase) => phase.owner));
+			if (service.has("researcher")) eagerRoles.add("researcher");
 			try {
 				for (const member of crew.roster) {
+					if (!eagerRoles.has(member)) continue;
 					const launched = await spawnRole({
 						role: member,
 						board: created,
