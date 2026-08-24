@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -127,6 +127,65 @@ test("resume with all sessions live spawns nothing and reactivates the task", as
 		if (oldHerdr === undefined) delete process.env.HERDR_BIN;
 		else process.env.HERDR_BIN = oldHerdr;
 	}
+});
+
+test("resume repairs layout with a persisted leader pane but decouples state without one", async () => {
+	const legacyId = "resume-no-pane-target";
+	const legacy = seed(legacyId, { status: "stopped", history: [handoff()] });
+	const legacyHarness = harness([`${legacyId}-worker`, `${legacyId}-qa`]);
+	const legacyResumed: any = await legacyHarness.command(`resume ${legacyId}`);
+	assert.equal(legacyResumed.status, "active");
+	assert.equal(legacyHarness.published.length, 1);
+	assert.equal(legacyHarness.published[0].handoffId, "h-1");
+	assert.equal(readBoard(legacyId).leader.paneId, undefined);
+
+	const id = "resume-layout-repair";
+	const leaderPaneId = `${id}-leader-pane`;
+	const repairBoard = seed(id, { status: "stopped" });
+	repairBoard.leader.paneId = leaderPaneId;
+	repairBoard.sessions.worker = { sessionName: `mb-${id}-worker`, contextEpoch: 2 };
+	repairBoard.sessions.qa = { sessionName: `mb-${id}-qa`, contextEpoch: 1 };
+	writeBoard(repairBoard);
+	const herdr = join(homedir(), "fake-herdr-layout.sh");
+	const herdrLog = join(homedir(), "fake-herdr-layout.log");
+	writeFileSync(
+		herdr,
+		`#!/bin/sh
+printf '%s\\n' "$*" >> "$HERDR_TEST_LOG"
+case "$1 $2" in
+  "pane list") printf '%s\\n' '{"result":{"layout":{"panes":[]}}}' ;;
+  "pane split") printf '%s\\n' '{"result":{"pane":{"pane_id":"created-pane"}}}' ;;
+  "pane run"|"pane focus") printf '%s\\n' '{"result":{"ok":true}}' ;;
+  *) printf '%s\\n' '{"result":{"ok":true}}' ;;
+esac
+`,
+	);
+	chmodSync(herdr, 0o755);
+	const oldHerdr = process.env.HERDR_BIN;
+	const oldHerdrLog = process.env.HERDR_TEST_LOG;
+	process.env.HERDR_BIN = herdr;
+	process.env.HERDR_TEST_LOG = herdrLog;
+	try {
+		const repairHarness = harness([`mb-${id}-worker`, `mb-${id}-qa`]);
+		const resumed: any = await repairHarness.command(`resume ${id}`);
+		const calls = readFileSync(herdrLog, "utf8").trim().split(/\r?\n/);
+		assert.equal(resumed.status, "active");
+		assert.ok(calls.includes("pane list --json"), calls.join(" | "));
+		assert.ok(
+			calls.some((call) => call.includes(`pane split --pane ${leaderPaneId}`) && call.includes("--no-focus")),
+		);
+		assert.ok(calls.includes(`pane focus ${leaderPaneId}`));
+		assert.equal(readBoard(id).leader.paneId, leaderPaneId);
+	} finally {
+		if (oldHerdr === undefined) delete process.env.HERDR_BIN;
+		else process.env.HERDR_BIN = oldHerdr;
+		if (oldHerdrLog === undefined) delete process.env.HERDR_TEST_LOG;
+		else process.env.HERDR_TEST_LOG = oldHerdrLog;
+		rmSync(herdr, { force: true });
+		rmSync(herdrLog, { force: true });
+	}
+
+	assert.equal(legacy.leader.paneId, undefined);
 });
 
 test("resume republishes an unacked final handoff but not an acked one", async () => {
