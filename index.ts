@@ -156,7 +156,7 @@ export default function blancheExtension(pi: any): void {
 		const current = board();
 		const name = sessionName();
 		const participant =
-			!!role() ||
+			!!process.env.BLANCHE_ROLE ||
 			(current !== undefined &&
 				(name === current.leader.sessionName ||
 					Object.values(current.sessions).some((session) => session?.sessionName === name)));
