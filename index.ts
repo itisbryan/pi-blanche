@@ -322,6 +322,11 @@ export default function blancheExtension(pi: any): void {
 			deliver(event.payload);
 		},
 		onReady: (ready: any) => {
+			// onReady is invoked SYNCHRONOUSLY by pi-intercom during extension load, so
+			// this function and everything reachable from it runs PRE-BIND: registration
+			// methods are safe, action methods (getSessionName, sendMessage, ...) throw
+			// notInitialized. The sessionName() catch and sessionReady gate enforce this.
+			// Do not call an action method from here.
 			channel = ready;
 			lifecycleHandle = registerLifecycle(pi, { channel: () => channel, liveSessions }) as any;
 			// Push and a single pull are both single moments, and they can both miss:
