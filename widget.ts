@@ -1,19 +1,20 @@
 import type { Board, Role } from "./types.ts";
+
 type Snapshot = {
 	board: Board;
 	viewer: { role?: Role; sessionName?: string };
 	liveRoster: { name?: string; contextPct?: number }[];
 };
 type Theme = Record<string, (s: string) => string>;
-type Clock = { setInterval: (f: () => void, n: number) => any; clearInterval: (t: any) => void };
+type Timer = { unref?: () => void };
+type Clock = { setInterval: (f: () => void, n: number) => Timer; clearInterval: (t: Timer) => void };
 const roles: Role[] = ["planner", "researcher", "advisor", "worker", "qa", "verifier"];
 export function createCrewWidget(
 	initial: Snapshot,
 	opts: { tui: { requestRender(): void }; theme: () => Theme; clock?: Clock; glyphs?: "unicode" | "ascii" },
 ) {
 	let snap = initial,
-		timer: any,
-		disposed = false,
+		timer: Timer | undefined,
 		frame = 0,
 		previous = "";
 	const glyph =
@@ -22,7 +23,7 @@ export function createCrewWidget(
 			: { tl: "╭", tr: "╮", bl: "╰", br: "╯", h: "─", v: "│", dot: "●", arrow: "▶" };
 	const color = (name: string, s: string) => opts.theme()[name]?.(s) ?? s;
 	const fit = (s: string, w: number) => {
-		const raw = s.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "");
+		const raw = s.replace(new RegExp("\\x1b\\[[0-?]*[ -/]*[@-~]", "g"), "");
 		const n = Array.from(raw);
 		if (n.length > w) return n.slice(0, Math.max(0, w - 1)).join("") + "…";
 		return s + " ".repeat(Math.max(0, w - n.length));
@@ -38,6 +39,7 @@ export function createCrewWidget(
 					: snap.board.sessions[snap.board.owner as Role]?.sessionName),
 		);
 	const render = (width: number) => {
+		if (width < 24) return [fit(`${snap.board.phase} ${snap.board.owner}`, width)];
 		if (frame >= 10) previous = "";
 		const b = snap.board,
 			t = snap.board.resolved,
@@ -45,8 +47,8 @@ export function createCrewWidget(
 		const title = `${glyph.tl}${glyph.h} BLANCHE · ${b.workflow.toUpperCase()} ${glyph.h} ${b.id} ${glyph.tr}`;
 		lines.push(fit(color("accent", title), width));
 		const idx = t.phases.findIndex((p) => p.name === b.phase);
-		const next = t.phases[idx + 1];
-		let status = `${String(idx + 1).padStart(2, "0")} ${b.phase} ${glyph.dot} ${next ? `${glyph.arrow} ${next.name}` : "complete"}`;
+		const next = idx >= 0 ? t.phases[idx + 1] : undefined;
+		let status = `${String(idx + 1).padStart(2, "0")} ${b.phase} ${glyph.dot} ${next ? `${glyph.arrow} ${next.name}` : idx < 0 ? "" : "complete"}`;
 		if (b.reworkRound > 0)
 			status += ` ${b.reworkRound >= b.resolved.maxRework ? `\u001b[91mrework ${b.reworkRound}/${b.resolved.maxRework}\u001b[0m` : `\u001b[37mrework ${b.reworkRound}/${b.resolved.maxRework}\u001b[0m`}`;
 		const last = b.history.at(-1);
@@ -115,7 +117,6 @@ export function createCrewWidget(
 			ensureTimer();
 		},
 		dispose() {
-			disposed = true;
 			if (timer && opts.clock) opts.clock.clearInterval(timer);
 			timer = undefined;
 		},
