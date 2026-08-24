@@ -228,7 +228,11 @@ export default function blancheExtension(pi: any): void {
 			payload.to === "advisor"
 				? "ACTION REQUIRED: call consult first, then handoff your advice back to the worker."
 				: nextPhase
-					? `On success, hand off to ${nextPhase.owner} with phase ${nextPhase.name}. ${payload.to === "leader" ? "If blocked, stop and ask the user for the missing input. Do not hand off to leader." : "If you cannot, hand off to leader with the reason."}`
+					? payload.to === "leader"
+						? nextPhase.owner === "leader"
+							? `On success, advance to phase ${nextPhase.name} by handing off to leader. If blocked, stop and ask the user for the missing input; do not hand off while remaining in phase ${payload.phase}.`
+							: `On success, hand off to ${nextPhase.owner} with phase ${nextPhase.name}. If blocked, stop and ask the user for the missing input. Do not hand off to leader.`
+						: `On success, hand off to ${nextPhase.owner} with phase ${nextPhase.name}. If you cannot, hand off to leader with the reason.`
 					: currentBoard && phaseIndex >= 0
 						? "This is the final phase. Report completion to the user and do not hand off."
 						: `Complete this phase, then end your turn by calling handoff(...). ${payload.to === "leader" ? "If blocked, stop and ask the user for the missing input. Do not hand off to leader." : "If you cannot, hand off to leader with the reason."}`;
