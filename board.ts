@@ -19,8 +19,25 @@ export const taskRoot = (cwd = join(homedir(), ".pi/agent/pi-blanche/tasks")) =>
 // starts. Resolve here so every call site agrees.
 export const currentRole = (): Role => (process.env.BLANCHE_ROLE as Role) ?? "leader";
 
-export const currentTaskId = (cwd = process.cwd()): string | undefined => {
+const SESSION_PREFIXES = ["qk", "fx", "hf", "mb", "rf", "iv", "rv"];
+const SESSION_ROLES = ["leader", "planner", "researcher", "advisor", "worker", "qa", "verifier"];
+if (
+	SESSION_PREFIXES.some((value) => value.includes("-")) ||
+	SESSION_ROLES.some((value) => value.includes("-"))
+) {
+	throw new Error("Session prefixes and roles must not contain dashes");
+}
+export function taskIdFromSessionName(name?: string): string | undefined {
+	if (!name) return undefined;
+	const parts = name.split("-");
+	if (parts.length < 3 || !SESSION_PREFIXES.includes(parts[0]) || !SESSION_ROLES.includes(parts.at(-1)!))
+		return undefined;
+	return parts.slice(1, -1).join("-");
+}
+export const currentTaskId = (cwd = process.cwd(), sessionName?: string): string | undefined => {
 	if (process.env.BLANCHE_TASK) return process.env.BLANCHE_TASK;
+	const named = taskIdFromSessionName(sessionName);
+	if (named && existsSync(join(taskDir(named), "board.json"))) return named;
 	const candidates = listTasks(cwd);
 	if (candidates.length > 1) {
 		throw new Error(
