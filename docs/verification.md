@@ -185,6 +185,34 @@ optional with a fallback to the broken function. Kickoff passed it and worked;
 silently not. The parameter was made **required** and the fallback deleted, so
 the compiler enumerated the call sites.
 
+**The extension load window is a distinct execution context, and every test we
+have runs outside it.** Two defects came from here — the duplicate `/crew`
+registration (§7.2 defect 1) and a pre-bind `getSessionName` throw — and neither
+was visible to 62 green tests, because tests exercise *turn* time and nothing
+exercised loading.
+
+The host model, verified against `loader.js` rather than inferred:
+
+| | Pre-bind (during load) | Post-bind |
+|---|---|---|
+| **Registration** — `registerCommand`, `registerTool`, `pi.on` | writes straight to the extension object, **safe** | safe |
+| **Action** — `getSessionName`, `sendMessage`, `setModel`, `exec`, … | stubbed to throw `notInitialized` | real |
+
+The runtime stubs every *action* method until `bindCore()` swaps in the real
+ones. `notInitialized` is not the same as `assertActive`, which is a staleness
+guard firing after `invalidate()` on new-session/fork/reload.
+
+The consequence for this extension: pi-intercom invokes `onReady`
+**synchronously** from `registerLocalExtension`, so `onReady` and everything
+reachable from it runs pre-bind. Nothing on that path may touch an action
+method. Today that is enforced by two things — the caught `sessionName()` inside
+`taskId()`, and the `sessionReady` gate on delivery, which is set only from
+`session_start` and therefore post-bind.
+
+Enumerated: `getSessionName` was the only action method reachable from that
+path. `registerLifecycle`'s `registerTool` calls are registration, which is why
+they never threw and why the trace surfaced where it did.
+
 **A confidently wrong value is worse than an absent one.** Defects 1 and 3 both
 produced plausible-looking wrong behaviour rather than an error. So did a fourth,
 smaller one: a helper that annotated every spec with the board's current owner
