@@ -170,7 +170,18 @@ export default function blancheExtension(pi: any): void {
 				widgetTui = tui;
 				const component = createCrewWidget(widgetSnapshot ?? initial, {
 					tui,
-					theme: () => context.ui.theme ?? theme,
+					theme: () => {
+						const liveTheme = context.ui.theme;
+						if (liveTheme?.fg) {
+							return {
+								accent: (text: string) => liveTheme.fg("accent", text),
+								borderAccent: (text: string) => liveTheme.fg("borderAccent", text),
+								error: (text: string) => liveTheme.fg("error", text),
+								warning: (text: string) => liveTheme.fg("warning", text),
+							};
+						}
+						return theme;
+					},
 				});
 				widgetComponent = component;
 				return component;
