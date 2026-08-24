@@ -38,6 +38,7 @@ export function assertFullHeightColumn(layout: any, ids: string[]) {
 	for (const p of panes(layout).filter((x: any) => ids.includes(x.pane_id)))
 		if (p.rect.height !== area.height) throw Error("not a full-height column");
 }
+// Herdr --ratio is the fraction retained by the split target; the new pane gets the remainder.
 const split = (target: string, direction: string, ratio: number) => [
 	"pane",
 	"split",
@@ -58,6 +59,8 @@ const move = (target: string, pane: string) => [
 	pane,
 	"--no-focus",
 ];
+export const rowSplitRatios = (count: number) =>
+	Array.from({ length: Math.max(0, count - 1) }, (_, index) => 1 / (count - index));
 export function planRows(stackPaneId: string, roles: Role[]) {
 	const commands: string[][] = [];
 	for (let index = 0; index < roles.length - 1; index++) {
@@ -69,8 +72,8 @@ export function planKickoff(input: any) {
 	const commands: string[][] = [];
 	const review = input.reviewRoles.length,
 		exec = input.executionRoles.length;
-	if (exec) commands.push(split(input.leaderPaneId, "right", 0.3));
-	if (review) commands.push(split(input.leaderPaneId, "right", exec ? 0.2857 : 0.2));
+	if (exec) commands.push(split(input.leaderPaneId, "right", 0.7));
+	if (review) commands.push(split(input.leaderPaneId, "right", exec ? 0.7143 : 0.8));
 	return {
 		commands: [...commands, ...planRows("execution", input.executionRoles)],
 		rowCommands: planRows("execution", input.executionRoles),
@@ -82,7 +85,7 @@ export function planKickoff(input: any) {
 export function planLateRole(input: any) {
 	const commands = input.reviewPaneId
 		? [split(input.reviewPaneId, "down", 0.5)]
-		: [split(input.leaderPaneId, "right", 0.2)];
+		: [split(input.leaderPaneId, "right", 0.7143)];
 	return {
 		commands,
 		focusPaneId: input.leaderPaneId,
@@ -108,7 +111,7 @@ export function planResume(input: any) {
 			"--direction",
 			"right",
 			"--ratio",
-			"0.3",
+			"0.7",
 			"--no-focus",
 		]),
 		focusPaneId: input.leaderPaneId,
