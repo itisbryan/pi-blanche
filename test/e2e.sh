@@ -8,7 +8,16 @@ npx tsx --test test/index.test.ts
 
 if [[ -n "${BLANCHE_CLAUDE_BRIDGE:-}" ]]; then
   bridge_model="${BLANCHE_CLAUDE_MODEL:-claude-bridge/claude-haiku-4-5}"
-  pi --no-extensions -e ./index.ts --no-session --model "$bridge_model" -p 'Reply with exactly: ok' | grep -qi '\bok\b'
+  bridge_extension="${BLANCHE_CLAUDE_BRIDGE_EXTENSION:-$HOME/.pi/agent/npm/node_modules/pi-claude-bridge/src/index.ts}"
+  [[ -f "$bridge_extension" ]] || { echo "claude-bridge extension not found: $bridge_extension" >&2; exit 1; }
+  bridge_output=$(mktemp "${TMPDIR:-/tmp}/blanche-bridge.XXXXXX")
+  if ! pi --no-extensions -e "$bridge_extension" -e ./index.ts --no-session --model "$bridge_model" --thinking off -p 'Reply with exactly: ok' > "$bridge_output"; then
+    cat "$bridge_output" >&2
+    rm -f "$bridge_output"
+    exit 1
+  fi
+  grep -qi '\bok\b' "$bridge_output"
+  rm -f "$bridge_output"
   echo "claude-bridge smoke PASS ($bridge_model)"
 fi
 
