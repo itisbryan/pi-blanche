@@ -125,7 +125,17 @@ export default function blancheExtension(pi: any): void {
 				if (entry) entry.ackedAt = Date.now();
 			});
 		}
-		pi.sendMessage?.(payload.message ?? `Handoff for ${payload.phase}`, { triggerTurn: true });
+		// sendMessage takes a CustomMessage, not a string. Passing a string silently
+		// injects nothing, which is why handoffs acked but no turn ever ran.
+		pi.sendMessage?.(
+			{
+				customType: "blanche_handoff",
+				content: payload.message ?? `Handoff for ${payload.phase}`,
+				display: true,
+				details: payload,
+			},
+			{ triggerTurn: true },
+		);
 	};
 
 	const pullOwed = () => {
