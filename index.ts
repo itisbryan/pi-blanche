@@ -213,6 +213,9 @@ export default function blancheExtension(pi: any): void {
 			profile: b.resolved.agents[target],
 			cwd: b.cwd,
 			liveSessions,
+			...(target === "advisor" && b.leader.paneId
+				? { splitTargetPaneId: b.leader.paneId, splitDirection: "right", splitRatio: 0.7143 }
+				: {}),
 		});
 		updateBoard(b.id, (fresh) => {
 			if (!fresh.sessions[target]) {
