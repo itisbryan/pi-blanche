@@ -424,6 +424,19 @@ test("uses theme tokens for rework emphasis instead of baked ANSI colors", () =>
 	assert.doesNotMatch(maximum.component.render(60).join("\n"), ansiCode("91"));
 });
 
+test("animates active work when no clock is injected", async () => {
+	const renders = { count: 0 };
+	const component = createWidget(snapshot(), {
+		tui: { requestRender: () => renders.count++ },
+		theme: () => makeTheme(),
+	});
+	const before = stripAnsi(component.render(100)[0] ?? "");
+	await new Promise((resolve) => setTimeout(resolve, 220));
+	const after = stripAnsi(component.render(100)[0] ?? "");
+	component.dispose();
+	assert.notEqual(after, before);
+});
+
 test("schedules one unref'd timer only for active live work", () => {
 	const active = mount(snapshot());
 	active.component.render(60);
