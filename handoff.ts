@@ -10,7 +10,8 @@ export function decideHandoff(input: HandoffInput): HandoffDecision {
 	if (allowed.length ? !input.verdict || !allowed.includes(input.verdict) : input.verdict != null)
 		return { ok: false, error: `Invalid verdict; allowed: ${allowed.length ? allowed.join("|") : "none"}` };
 	const next = structuredClone(board) as Board;
-	const spec = input.spec ? next.specs[input.spec] : undefined;
+	const specId = input.spec ?? board.currentSpec;
+	const spec = specId ? next.specs[specId] : undefined;
 	const state = next.resolved.specs && spec ? spec : next;
 	const bad = input.verdict === "FAIL" || input.verdict === "CHANGES";
 	if (bad && to === "worker") state.reworkRound++;
