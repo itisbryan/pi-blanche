@@ -1,6 +1,15 @@
 import { execFile } from "node:child_process";
 import { rmSync } from "node:fs";
-import { listTasks, readBoard, taskDir, updateBoard, writeCheckpoint, writeConsultation } from "./board.ts";
+import {
+	currentRole,
+	currentTaskId,
+	listTasks,
+	readBoard,
+	taskDir,
+	updateBoard,
+	writeCheckpoint,
+	writeConsultation,
+} from "./board.ts";
 import { spawnRole } from "./spawn.ts";
 import type { Board, CheckpointInput, Role } from "./types.ts";
 
@@ -61,7 +70,7 @@ export function registerLifecycle(
 			return b;
 		}
 		if (action === "stop") {
-			const b = readBoard(idArg ?? process.env.BLANCHE_TASK!);
+			const b = readBoard(idArg ?? currentTaskId()!);
 			if (b.status !== "stopped")
 				return updateBoard(b.id, (x) => {
 					x.status = "stopped";
@@ -69,7 +78,7 @@ export function registerLifecycle(
 			return b;
 		}
 		if (action === "clean") {
-			const id = idArg ?? process.env.BLANCHE_TASK;
+			const id = idArg ?? currentTaskId();
 			if (!id) throw Error("Task id is required");
 			const b = readBoard(id);
 			for (const s of Object.values(b.sessions)) if (s?.paneId) await closePane(s.paneId);
@@ -83,8 +92,8 @@ export function registerLifecycle(
 		description: "Persist a crew checkpoint.",
 		parameters: {},
 		execute: async (_id: string, input: CheckpointInput) => {
-			const role = process.env.BLANCHE_ROLE as Role,
-				b = readBoard(process.env.BLANCHE_TASK!);
+			const role = currentRole(),
+				b = readBoard(currentTaskId()!);
 			let path = "";
 			updateBoard(b.id, (x) => {
 				path = writeCheckpoint(x, role, x.currentSpec, x.sessions[role]?.contextEpoch ?? 0, input);
@@ -100,7 +109,7 @@ export function registerLifecycle(
 		parameters: {},
 		execute: async (_id: string, input: any) => {
 			if (!input.answer?.trim()) throw Error("Consultation answer must not be empty");
-			const b = readBoard(process.env.BLANCHE_TASK!);
+			const b = readBoard(currentTaskId()!);
 			if (input.role !== "researcher" && input.role !== "advisor")
 				throw Error("Consult role must be researcher or advisor");
 			const id = crypto.randomUUID();

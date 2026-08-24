@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { createTask, readBoard, taskDir, updateBoard } from "./board.ts";
+import { createTask, currentRole, currentTaskId, readBoard, taskDir, updateBoard } from "./board.ts";
 import { loadConfig, resolveCrew } from "./config.ts";
 import { decideHandoff } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
@@ -46,8 +46,8 @@ export default function blancheExtension(pi: any): void {
 		| undefined;
 	const sessions: Partial<Record<Role, { contextEpoch: number }>> = {};
 	const seenHandoffIds = new Set<string>();
-	const role = (): Role | undefined => process.env.BLANCHE_ROLE as Role | undefined;
-	const taskId = (): string | undefined => process.env.BLANCHE_TASK;
+	const role = (): Role | undefined => currentRole();
+	const taskId = (): string | undefined => currentTaskId();
 	const board = (): Board | undefined => {
 		const id = taskId();
 		if (!id) return undefined;
@@ -255,7 +255,13 @@ export default function blancheExtension(pi: any): void {
 				});
 				const status = `${created.phase} ▸ ${created.owner} ▸ ${created.currentSpec ?? "no spec"} ▸ rework ${created.reworkRound}`;
 				ctx?.ui?.setStatus?.("blanche", status);
-				const message = `Crew ${id} started: ${crew.roster.join(", ")}`;
+				// The crew idles until the leader hands the work over; say so, or the
+				// panes just sit there looking broken.
+				const first = crew.phases.find((p) => p.owner !== "leader")?.owner ?? crew.roster[0];
+				const message =
+					`Crew ${id} started: ${crew.roster.join(", ")}\n` +
+					`Phase ${created.phase}, owned by you. Nothing runs until you hand off:\n` +
+					`  handoff({ to: "${first}", phase: "${crew.phases.find((p) => p.owner === first)?.name}", message: "..." })`;
 				ctx?.ui?.notify?.(message, "info");
 				return message;
 			} catch (error) {

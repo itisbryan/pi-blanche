@@ -13,6 +13,15 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { Board, CheckpointInput, ConsultationRecord, Role } from "./types.js";
 export const taskRoot = (cwd = join(homedir(), ".pi/agent/pi-blanche/tasks")) => cwd;
+// The leader's session is not spawned by pi-blanche, so it has no BLANCHE_*
+// env. Without these fallbacks the operator can never make the first handoff:
+// the crew spawns, the task sits in REQUESTED owned by leader, and nothing
+// starts. Resolve here so every call site agrees.
+export const currentRole = (): Role => (process.env.BLANCHE_ROLE as Role) ?? "leader";
+
+export const currentTaskId = (cwd = process.cwd()): string | undefined =>
+	process.env.BLANCHE_TASK ?? listTasks(cwd)[0]?.id;
+
 export function taskDir(id: string) {
 	return join(taskRoot(), id);
 }
