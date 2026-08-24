@@ -1,7 +1,4 @@
 import { execFile } from "node:child_process";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { AgentProfile, Board, Role } from "./types.ts";
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
@@ -25,14 +22,8 @@ export function buildRoleCommand(input: {
 		...(input.extensions ?? []).flatMap((extension) => ["-e", shellQuote(extension)]),
 	].join(" ");
 }
-const crewExtensions = (): string[] => [
-	process.env.BLANCHE_INTERCOM_EXTENSION ??
-		join(
-			process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
-			"npm/node_modules/pi-intercom/index.ts",
-		),
-	process.env.BLANCHE_EXTENSION ?? fileURLToPath(new URL("./index.ts", import.meta.url)),
-];
+const crewExtensions = (): string[] =>
+	[process.env.BLANCHE_INTERCOM_EXTENSION, process.env.BLANCHE_EXTENSION].filter(Boolean) as string[];
 export const runHerdr = (args: string[]): Promise<unknown> =>
 	new Promise((resolve, reject) => {
 		execFile(process.env.HERDR_BIN ?? "herdr", args, { shell: false }, (error, stdout, stderr) => {
