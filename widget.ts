@@ -78,10 +78,19 @@ export function createCrewWidget(
 					? "on demand"
 					: "not started";
 			const owner = b.owner === role ? "> owner" : "";
+			const provisionToken =
+				provision === "live"
+					? "success"
+					: provision === "offline"
+						? "warning"
+						: provision === "not started"
+							? "dim"
+							: "muted";
+			const provisionText = color(provisionToken, provision);
 			const label = you ? "YOU" : role === "leader" ? "OPERATOR" : "";
 			lines.push(
 				fit(
-					`${glyph.v} ${label ? `${label} · ` : ""}${role.toUpperCase()} ${owner} ${provision}`.replace(
+					`${glyph.v} ${label ? `${label} · ` : ""}${role.toUpperCase()} ${owner} ${provisionText}`.replace(
 						/ +/g,
 						" ",
 					),
@@ -124,6 +133,7 @@ export function createCrewWidget(
 				snap = next;
 				if (next.board.history.at(-1)?.handoffId !== old) {
 					transitionActive = true;
+					if (transitionTimer && opts.clock?.clearTimeout) opts.clock.clearTimeout(transitionTimer);
 					if (opts.clock?.setTimeout)
 						transitionTimer = opts.clock.setTimeout(() => {
 							transitionActive = false;
