@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { createTask, currentRole, currentTaskId, readBoard, taskDir, updateBoard } from "./board.ts";
+import { createTask, currentRole, currentTaskId, listTasks, readBoard, taskDir, updateBoard } from "./board.ts";
 import { loadConfig, resolveCrew } from "./config.ts";
 import { decideHandoff, pendingFor } from "./handoff.ts";
 import { buildCrewBlock } from "./inject.ts";
@@ -276,6 +276,13 @@ export default function blancheExtension(pi: any): void {
 			if (!match) throw new Error('Usage: /crew <workflow> "<description>"');
 			const [workflow, description] = [match[1], match[2]];
 			const crew = resolveCrew(loadConfig(), workflow);
+			const blocking = listTasks(process.cwd()).find((candidate) => candidate.status === "active");
+			if (blocking) {
+				throw new Error(
+					`Crew ${blocking.id} is already active in this directory. Stop or clean it ` +
+					`(/crew stop, /crew clean ${blocking.id}), or start in another directory.`,
+				);
+			}
 			const id = `${workflow}-${Date.now().toString(36)}`;
 			// Label this session to match the crew convention, so it is identifiable
 			// in the roster instead of showing up as subagent-chat-<uuid>.
