@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
@@ -537,7 +537,7 @@ export default function blancheExtension(pi: any): void {
 						liveSessions,
 						...(firstInColumn
 							? { paneId: targetPane }
-							: { splitTargetPaneId: targetPane, splitDirection: "down", splitRatio: 100 }),
+							: { splitTargetPaneId: targetPane, splitDirection: "down", splitRatio: 0.5 }),
 					});
 					usedColumns.add(targetPane);
 					rolePane.set(member, launched.paneId);
@@ -572,7 +572,8 @@ export default function blancheExtension(pi: any): void {
 				void refreshWidget(ctx);
 				return message;
 			} catch (error) {
-				await Promise.all(openedPanes.map((paneId) => closePane(paneId)));
+				for (const paneId of openedPanes.slice().reverse()) await closePane(paneId);
+				rmSync(taskDir(created.id), { recursive: true, force: true });
 				throw new Error(
 					`Crew kickoff failed; any opened panes were closed: ${error instanceof Error ? error.message : String(error)}`,
 				);
