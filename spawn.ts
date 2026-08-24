@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentProfile, Board, Role } from "./types.ts";
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
@@ -7,6 +10,7 @@ export function buildRoleCommand(input: {
 	taskId: string;
 	sessionName: string;
 	profile: AgentProfile;
+	extensions?: string[];
 }): string {
 	return [
 		`BLANCHE_ROLE=${shellQuote(input.role)}`,
@@ -18,8 +22,17 @@ export function buildRoleCommand(input: {
 		shellQuote(input.profile.model),
 		"--thinking",
 		shellQuote(input.profile.thinking),
+		...(input.extensions ?? []).flatMap((extension) => ["-e", shellQuote(extension)]),
 	].join(" ");
 }
+const crewExtensions = (): string[] => [
+	process.env.BLANCHE_INTERCOM_EXTENSION ??
+		join(
+			process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
+			"npm/node_modules/pi-intercom/index.ts",
+		),
+	process.env.BLANCHE_EXTENSION ?? fileURLToPath(new URL("./index.ts", import.meta.url)),
+];
 export const runHerdr = (args: string[]): Promise<unknown> =>
 	new Promise((resolve, reject) => {
 		execFile(process.env.HERDR_BIN ?? "herdr", args, { shell: false }, (error, stdout, stderr) => {
@@ -85,7 +98,13 @@ export async function spawnRole(input: {
 		id = extractPaneId(split);
 	}
 	if (!id) throw new Error("Herdr pane split returned no pane id.");
-	const command = buildRoleCommand({ role: input.role, taskId, sessionName, profile: input.profile });
+	const command = buildRoleCommand({
+		role: input.role,
+		taskId,
+		sessionName,
+		profile: input.profile,
+		extensions: crewExtensions(),
+	});
 	try {
 		await runHerdr(["pane", "run", id, command]);
 		const deadline = Date.now() + Number(process.env.BLANCHE_REGISTRATION_TIMEOUT_MS ?? 20_000);
