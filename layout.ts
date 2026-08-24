@@ -58,6 +58,13 @@ const move = (target: string, pane: string) => [
 	pane,
 	"--no-focus",
 ];
+export function planRows(stackPaneId: string, roles: Role[]) {
+	const commands: string[][] = [];
+	for (let index = 0; index < roles.length - 1; index++) {
+		commands.push(split(stackPaneId, "down", 1 / (roles.length - index)));
+	}
+	return commands;
+}
 export function planKickoff(input: any) {
 	const commands: string[][] = [];
 	const review = input.reviewRoles.length,
@@ -65,7 +72,8 @@ export function planKickoff(input: any) {
 	if (exec) commands.push(split(input.leaderPaneId, "right", 0.3));
 	if (review) commands.push(split(input.leaderPaneId, "right", exec ? 0.2857 : 0.2));
 	return {
-		commands,
+		commands: [...commands, ...planRows("execution", input.executionRoles)],
+		rowCommands: planRows("execution", input.executionRoles),
 		focusPaneId: input.leaderPaneId,
 		createdPaneIds: [...input.reviewRoles, ...input.executionRoles].map((r: string) => r),
 		columnCreation: !!review && !!exec,
