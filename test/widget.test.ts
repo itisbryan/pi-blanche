@@ -471,6 +471,50 @@ test("dispose clears animation and prevents later renders", () => {
 	assert.equal(mounted.renders, before);
 });
 
+test("does not replay a resumed handoff from initial history", () => {
+	const resumed: WidgetSnapshot = snapshot({
+		phase: "IMPLEMENTING",
+		owner: "worker",
+		sessions: { worker: { sessionName: "ft-feat-widget-worker", contextEpoch: 0 } },
+		history: [
+			{
+				handoffId: "resumed-handoff",
+				from: "leader",
+				to: "worker",
+				phase: "DISCOVERY",
+				verdict: null,
+				sentAt: 1,
+			},
+		],
+	});
+	resumed.liveRoster.push({ name: "ft-feat-widget-worker", contextPct: 19 });
+	const mounted = mount(resumed);
+	assert.doesNotMatch(stripAnsi(mounted.component.render(60).join("\n")), /HANDOFF/);
+	mounted.component.update(resumed);
+	assert.doesNotMatch(stripAnsi(mounted.component.render(60).join("\n")), /HANDOFF/);
+
+	const next: WidgetSnapshot = {
+		...resumed,
+		board: {
+			...resumed.board,
+			history: [
+				{
+					handoffId: "new-handoff",
+					from: "leader",
+					to: "worker",
+					phase: "IMPLEMENTING",
+					verdict: null,
+					sentAt: 2,
+				},
+			],
+		},
+	};
+	mounted.component.update(next);
+	assert.match(stripAnsi(mounted.component.render(60).join("\n")), /HANDOFF worker/);
+	mounted.clock.run(1500);
+	assert.doesNotMatch(stripAnsi(mounted.component.render(60).join("\n")), /HANDOFF/);
+});
+
 test("update preserves an in-flight handoff and does not replay unchanged snapshots", () => {
 	const initial = snapshot();
 	const mounted = mount(initial);
